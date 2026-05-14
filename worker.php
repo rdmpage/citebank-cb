@@ -60,6 +60,73 @@ function tier1_candidates($doi)
 }
 
 //----------------------------------------------------------------------------------------
+// Compute the [year, volume, first-page] blocking hash for a doc. Returns null
+// if any component is missing or unparseable. Mirrors the JS get_hash() in
+// index.html so the worker and the matching/hash view agree on key shape.
+function compute_hash($doc)
+{
+	if (!isset($doc->issued->{'date-parts'}[0][0]))
+	{
+		return null;
+	}
+	$year = (int)$doc->issued->{'date-parts'}[0][0];
+	if ($year === 0)
+	{
+		return null;
+	}
+
+	if (!isset($doc->volume) || !preg_match('/(\d+)/', (string)$doc->volume, $vm))
+	{
+		return null;
+	}
+	$volume = (int)$vm[1];
+
+	$page_first = null;
+	if (isset($doc->{'page-first'}))
+	{
+		$page_first = (int)$doc->{'page-first'};
+	}
+	else if (isset($doc->page) && preg_match('/(\d+)/', (string)$doc->page, $pm))
+	{
+		$page_first = (int)$pm[1];
+	}
+	if ($page_first === null)
+	{
+		return null;
+	}
+
+	return array($year, $volume, $page_first);
+}
+
+//----------------------------------------------------------------------------------------
+// Fetch all docs sharing this [year, volume, first-page] hash (Tier 2).
+function tier2_candidates($hash)
+{
+	global $couch;
+	global $config;
+
+	$parameters = array(
+		'key'          => json_encode($hash),
+		'reduce'       => 'false',
+		'include_docs' => 'true',
+	);
+	$url = '_design/matching/_view/hash?' . http_build_query($parameters);
+
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+	$obj = json_decode($resp);
+
+	$candidates = array();
+	if (isset($obj->rows))
+	{
+		foreach ($obj->rows as $row)
+		{
+			$candidates[] = $row->doc;
+		}
+	}
+	return $candidates;
+}
+
+//----------------------------------------------------------------------------------------
 // Stamp visited + algorithm and PUT. Used when there's nothing to cluster
 // (singleton at every tier, or no usable blocking key), so the record still
 // advances in the queue.
@@ -110,9 +177,20 @@ if (isset($doc->DOI))
 	}
 }
 
-// No tier hit (no DOI, or singleton at every tier). Stamp visited so we advance.
-// Tier 2 (hash) and Tier 3 (Nouveau) will fit between the tier 1 check above
-// and this fallback once they exist.
+// Tier 2: year + volume + first-page hash.
+$hash = compute_hash($doc);
+if ($hash !== null)
+{
+	$candidates = tier2_candidates($hash);
+	if (count($candidates) >= 2)
+	{
+		cluster_candidates($candidates, 'hash-y-v-p');
+		exit(0);
+	}
+}
+
+// No tier hit (singleton at every tier, or no usable blocking key). Stamp
+// visited so we advance. Tier 3 (Nouveau) will fit above this once it exists.
 mark_visited($doc);
 
 ?>

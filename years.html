@@ -1,0 +1,132 @@
+<html>
+<head>
+	<meta charset="UTF-8">
+
+	<link rel="stylesheet" href="css/main.css">
+	
+	<script src="js/citation.js" type="text/javascript"></script>
+	<script>
+		const Cite = require('citation-js')
+	</script>
+	
+</head>
+<body>
+
+<h1>CiteBank</h1>
+
+<h2><a href=".">Home</a> | Years</h2>
+
+<div id = "years">
+
+</div>
+
+<div style="clear:both;"></div>
+
+<p>
+<!-- Good examples include <a href="?family=Roth">Roth</a>, <a href="?family=Viette">Viette</a> -->
+</p>
+
+<div id = "volumes">
+<div id = "works">
+
+</div>
+
+
+<script>
+	const urlParams = new URLSearchParams(window.location.search);
+
+
+	// list all the volumes for this year
+	function list_volumes(year) {
+		document.getElementById("volumes").innerHTML = "";
+		
+		var url = "api.php?hash&year=" + year;
+
+		fetch(url).then(
+			function(response){
+				if (response.status != 200) {
+					console.log("Looks like there was a problem. Status Code: " + response.status);
+					return;
+				}
+						
+				response.json().then(function(data) {
+					var html = "<h2>" + year + "</h2>";
+					
+					html += '<div class="multicolumn">';
+					html += '<ul>';
+					
+					for (var i in data) {
+						html += '<li><a href="?year=' + year + '&volume=' + encodeURIComponent(data[i]) + '">' + data[i] + '</li>';
+					}
+					
+					html += '</ul>';
+					html += '</div>';
+					
+					document.getElementById("volumes").innerHTML = html;
+				});
+		});
+	}
+
+	var years = [1922];
+	
+	var html = '';
+	html += '<ul style="list-style-type: none;">';
+	for (var i in years) {
+		html += '<li style="float: left;padding:0.3em"><a href="#" onclick="list_volumes(\'' + years[i] + '\')">' + years[i] + '</a></li>';
+	}
+	html += '</ul>';
+	
+	document.getElementById("years").innerHTML = html;
+	
+	var year = urlParams.get('year');
+	
+	if (!year) {
+		year = years[0];
+	}
+	
+	var volume = urlParams.get('volume');
+	
+	if (volume) {
+		var url = "api.php?hash&year=" + encodeURIComponent(year) + "&volume=" + encodeURIComponent(volume)
+		
+		fetch(url).then(
+			function(response){
+				if (response.status != 200) {
+					console.log("Looks like there was a problem. Status Code: " + response.status);
+					return;
+				}
+						
+				response.json().then(function(data) {
+					var html = "<h3>Year: " + year + " Volume: " + volume + "</h3>";					
+					
+					for (var page in data) {
+						html += '<h4>Page: ' + page + '</h4>';						
+
+						html += '<ul style="list-style: none;">';
+						for (var i in data[page]) {
+							var citation = new Cite(data[page][i]);
+							
+							var id = data[page][i]._id;
+							id = id.replace('#', '%23');
+							html += '<li style="padding:0.3em;">';
+							html += '<a href="./?id=' + id + '">';							
+							html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
+							html += '</a>';
+							html += '</li>';
+						}
+						html += '</ul>';
+
+					}
+
+					document.getElementById("works").innerHTML = html;
+				});
+		});
+		
+	} else {
+		list_volumes(year);
+	}
+
+</script>
+
+</body>
+</html>

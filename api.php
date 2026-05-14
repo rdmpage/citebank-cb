@@ -84,7 +84,7 @@ function get_multiple_records($ids)
 //--------------------------------------------------------------------------------------------------
 function get_consensus($records)
 {
-	$result = merge($csl_array, []);
+	$result = merge($records, []);
 	return $result;
 }
 
@@ -588,8 +588,12 @@ function get_works_by_volume_by_year($year, $volume)
 			{
 				$result[$page] = array();
 			}
-
-			$result[$page][] = 	simplify_csl($row->doc);
+			
+			// filter out other members of the cluster
+			if ($row->doc->_id == $row->doc->citebank->cluster)
+			{
+				$result[$page][] = 	simplify_csl($row->doc);
+			}
 		}
 	}
 	
@@ -856,23 +860,21 @@ function display_unstructured ($id, $callback = '')
 
 
 //--------------------------------------------------------------------------------------------------
+// Both branches terminate via api_output (which exits), so there is no
+// fall-through path. If you add another branch, it must also call api_output.
 function display_cluster ($id, $callback = '')
 {
-	$status = 404;
-	
-	$members = array();
-	
 	$members = get_cluster_members($id);
-	
-	if (count($members) > 0)
+
+	if (count($members) === 0)
 	{
-		$status = 200;
-		
-		display_consensus_for_records($members, $callback);
-	}	
-		
-	api_output(null, $callback, $status);
-}	
+		$err = new stdclass;
+		$err->error = "No cluster found for $id";
+		api_output($err, $callback, 404);
+	}
+
+	display_consensus_for_records($members, $callback);
+}
 
 
 //--------------------------------------------------------------------------------------------------
@@ -924,19 +926,27 @@ function main()
 				display_unstructured($id, $callback);	
 				$handled = true;			
 			}
-			
-			if (isset($_GET['cluster']))
-			{		
-				display_cluster($id, $callback);	
-				$handled = true;			
-			}
 						
 			if (!$handled)
 			{
 				display_one_record($id, $format, $callback);
 				$handled = true;
+			}			
+		}
+	}
+
+	// get information on a cluster
+	if (!$handled)
+	{
+		if (isset($_GET['clusterid']))
+		{	
+			$clusterid = $_GET['clusterid'];
+						
+			if (!$handled)
+			{		
+				display_cluster($clusterid, $callback);	
+				$handled = true;			
 			}
-			
 		}
 	}
 	
@@ -1143,121 +1153,6 @@ function main()
 		}
 	}	
 		
-	
-	if(0)
-	{
-	
-	// clustering
-	if (!$handled)
-	{
-		if (isset($_GET['cluster']))
-		{	
-			$ids = preg_split('/[\||,]\s*/', $_GET['cluster']);
-			
-			display_cluster($ids, $callback);
-			$handled = true;
-		}
-	}
-	
-	
-	
-	// search by DOI
-	if (!$handled)
-	{
-		if (isset($_GET['doi']))
-		{	
-			$q = 'doi:' . $_GET['doi'];
-			display_search($q, $callback);
-			
-			$handled = true;
-		}
-		
-	}	
-	
-	// container
-	if (!$handled)
-	{
-		if (isset($_GET['container']))
-		{	
-			if (isset($_GET['first']))
-			{
-				display_container_first_letters($callback);
-				$handled = true;
-			}			
-		
-			if (isset($_GET['letter']))
-			{
-				display_container_by_letter($_GET['letter'], $callback);
-				$handled = true;
-			}	
-			
-			if (!$handled)
-			{
-				$q = 'container:' . $_GET['container'];
-				display_search($q, $callback);
-				$handled = true;
-			}
-								
-		}
-	}
-	
-	
-	// versions and consensus
-	if (!$handled)
-	{
-		if (isset($_GET['versions']))
-		{	
-			$cluster_id = $_GET['versions'];
-			
-			if (isset($_GET['consensus']))
-			{
-				display_consensus($cluster_id, $callback);
-				$handled = true;
-			}						
-			
-			if (!$handled)
-			{
-				display_versions($cluster_id, $callback);
-				$handled = true;
-			}
-		}
-	}	
-	
-	// feature vector for two records
-	if (!$handled)
-	{
-		if (isset($_GET['pair']))
-		{	
-			$ids = preg_split('/[\||,]\s*/', $_GET['pair']);
-			
-			if (count($ids) == 2)
-			{
-				display_feature($ids);
-			}
-			$handled = true;
-		}
-	}	
-	
-	// search
-	if (!$handled)
-	{
-		if (isset($_GET['q']))
-		{	
-			$q = $_GET['q'];
-			
-			// Elastic
-			$from = 0;
-			$size = 10;
-			
-			$filter = null;
-			
-			display_search($q, $callback);
-			
-			$handled = true;
-		}
-			
-	}
-	}
 	
 	if (!$handled)
 	{

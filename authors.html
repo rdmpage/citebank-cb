@@ -38,6 +38,16 @@ Good examples include
 
 
 <script>
+	function escapeHtml(s) {
+		if (s === null || s === undefined) return '';
+		return String(s)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
+	}
+
 	const urlParams = new URLSearchParams(window.location.search);
 
 
@@ -60,7 +70,7 @@ Good examples include
 					html += '<ul>';
 					
 					for (var i in data) {
-						html += '<li><a href="?family=' + encodeURIComponent(data[i]) + '">' + data[i] + '</li>';
+						html += '<li><a href="?family=' + encodeURIComponent(data[i]) + '">' + escapeHtml(data[i]) + '</a></li>';
 					}
 					
 					html += '</ul>';
@@ -107,7 +117,7 @@ Good examples include
 				}
 						
 				response.json().then(function(data) {
-					var html = "<h3>" + family + "</h3>";					
+					var html = "<h3>" + escapeHtml(family) + "</h3>";
 					
 					for (var year in data) {
 						html += '<h4>' + year + '</h4>';						

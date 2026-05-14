@@ -50,6 +50,16 @@
 
 
 <script>
+	function escapeHtml(s) {
+		if (s === null || s === undefined) return '';
+		return String(s)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
+	}
+
 	const urlParams = new URLSearchParams(window.location.search);
 
 	function list_containers(letter) {
@@ -70,7 +80,7 @@
 					html += '<ul>';
 					
 					for (var i in data) {
-						html += '<li><a href="?title=' + encodeURIComponent(data[i]) + '">' + data[i] + '</li>';
+						html += '<li><a href="?title=' + encodeURIComponent(data[i]) + '">' + escapeHtml(data[i]) + '</a></li>';
 					}
 					
 					html += '</ul>';
@@ -117,7 +127,7 @@
 				}
 						
 				response.json().then(function(data) {
-					var html = "<h3>" + title + "</h3>";					
+					var html = "<h3>" + escapeHtml(title) + "</h3>";
 					
 					for (var year in data) {
 						html += '<h4>' + year + '</h4>';

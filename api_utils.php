@@ -103,7 +103,7 @@ function api_output($obj, $callback = '', $status = 400)
 	switch ($status)
 	{
 		case 303:
-			header('HTTP/1.1 404 See Other');
+			header('HTTP/1.1 303 See Other');
 			break;
 			
 		case 400:
@@ -126,7 +126,7 @@ function api_output($obj, $callback = '', $status = 400)
 			break;
 	}
 	
-	header("Content-type: text/plain"); // for debugging
+	header("Content-type: application/json");
 	header("Cache-control: max-age=3600");
 	
 	if ($callback != '')
