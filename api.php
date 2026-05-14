@@ -1,0 +1,1272 @@
+<?php
+
+error_reporting(E_ALL);
+
+require_once (dirname(__FILE__) . '/api_utils.php');
+require_once (dirname(__FILE__) . '/couchsimple.php');
+require_once (dirname(__FILE__) . '/csl_features.php');
+require_once (dirname(__FILE__) . '/merge_csl.php');
+
+
+//--------------------------------------------------------------------------------------------------
+// Parse JSON and return any errors
+function parse_json($json)
+{
+	$doc = json_decode($json);
+	
+	$error = new stdclass;
+	$error->code = json_last_error();
+		
+	switch ($error->code) 
+	{
+		case JSON_ERROR_NONE:
+			$error->msg = 'No errors';
+			break;
+		case JSON_ERROR_DEPTH:
+			$error->msg = 'Maximum stack depth exceeded';
+			break;
+		case JSON_ERROR_STATE_MISMATCH:
+			$error->msg = 'Underflow or the modes mismatch';
+			break;
+		case JSON_ERROR_CTRL_CHAR:
+			$error->msg = 'Unexpected control character found';
+			break;
+		case JSON_ERROR_SYNTAX:
+			$error->msg = 'Syntax error, malformed JSON';
+			break;
+		case JSON_ERROR_UTF8:
+			$error->msg = 'Malformed UTF-8 characters, possibly incorrectly encoded';
+			break;
+		default:
+			$error->msg = 'Unknown error';
+			break;
+	}
+	
+	return $error;
+}
+
+//--------------------------------------------------------------------------------------------------
+function get_one_record($id)
+{
+	global $config;
+	global $couch;
+	
+	$obj = null;	
+	
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . urlencode($id));
+	
+	$obj = json_decode($resp);
+	
+	return $obj;
+}
+
+//--------------------------------------------------------------------------------------------------
+function get_multiple_records($ids)
+{
+	global $config;
+	global $couch;
+	
+	$result = array();
+
+	foreach ($ids as $id)
+	{
+		$obj = get_one_record($id);
+		
+		if ($obj)
+		{
+			$result[] = $obj;
+		}
+	}
+	
+	return $result;
+}
+
+//--------------------------------------------------------------------------------------------------
+function get_consensus($records)
+{
+	$result = merge($csl_array, []);
+	return $result;
+}
+
+//--------------------------------------------------------------------------------------------------
+function get_from_doi($doi)
+{
+	global $config;
+	global $couch;
+	
+	$result = array();
+	
+	// clean
+	$doi = preg_replace('/https?:\/\/(dx\.)?doi.org\//i', '', $doi);
+	
+	$doi = strtolower($doi);
+	
+	$parameters = array(
+		'key' 			=> '"' . $doi . '"',
+		'reduce' 		=> 'false',
+		'include_docs' 	=> 'true',
+	);
+
+	$url = '_design/interface/_view/doi?' . http_build_query($parameters);
+	
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+	
+	$response_obj = json_decode($resp);
+	
+	if ($response_obj)
+	{
+		foreach ($response_obj->rows as $row)
+		{
+			$result[] = $row->doc;
+		}
+	}
+	
+	return $result;
+}
+
+//--------------------------------------------------------------------------------------------------
+function get_containers_first_letters()
+{
+	global $config;
+	global $couch;
+	
+	$result = array();
+	
+	$parameters = array(
+		'reduce' 		=> 'true',
+		'group_level' 	=> 2,
+	);
+
+	$url = '_design/interface/_view/container-letter-list?' . http_build_query($parameters);
+	
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+	
+	$response_obj = json_decode($resp);
+	
+	if ($response_obj)
+	{
+		foreach ($response_obj->rows as $row)
+		{
+			$result[$row->key] = $row->value;
+		}
+	}
+	
+	return $result;
+}
+
+//--------------------------------------------------------------------------------------------------
+function get_containers_by_letter($letter)
+{
+	global $config;
+	global $couch;
+	
+	$result = array();
+	
+	$startkey = array($letter);
+	$endkey = array($letter, new stdclass);
+	
+	$parameters = array(
+		'startkey' 		=> json_encode($startkey),
+		'endkey'		=> json_encode($endkey),
+		'reduce' 		=> 'true',
+		'group_level' 	=> 2,
+	);
+
+	$url = '_design/interface/_view/container-letter?' . http_build_query($parameters);
+	
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+	
+	$response_obj = json_decode($resp);
+	
+	if ($response_obj)
+	{
+		foreach ($response_obj->rows as $row)
+		{
+			$result[] = $row->key[1];
+		}
+	}
+	
+	return $result;
+}
+
+//--------------------------------------------------------------------------------------------------
+function get_family_first_letters()
+{
+	global $config;
+	global $couch;
+	
+	$result = array();
+	
+	$parameters = array(
+		'reduce' 		=> 'true',
+		'group_level' 	=> 2,
+	);
+
+	$url = '_design/interface/_view/family-letter-first?' . http_build_query($parameters);
+	
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+	
+	$response_obj = json_decode($resp);
+	
+	if ($response_obj)
+	{
+		foreach ($response_obj->rows as $row)
+		{
+			$result[$row->key] = $row->value;
+		}
+	}
+	
+	return $result;
+}
+
+//--------------------------------------------------------------------------------------------------
+function get_authors_by_letter($letter)
+{
+	global $config;
+	global $couch;
+	
+	$result = array();
+	
+	$startkey = array($letter);
+	$endkey = array($letter, new stdclass);
+	
+	$parameters = array(
+		'startkey' 		=> json_encode($startkey),
+		'endkey'		=> json_encode($endkey),
+		'reduce' 		=> 'true',
+		'group_level' 	=> 2,
+	);
+
+	$url = '_design/interface/_view/family-letter?' . http_build_query($parameters);
+	
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+	
+	$response_obj = json_decode($resp);
+	
+	if ($response_obj)
+	{
+		foreach ($response_obj->rows as $row)
+		{
+			$result[] = $row->key[1];
+		}
+	}
+	
+	return $result;
+}
+
+//--------------------------------------------------------------------------------------------------
+function simplify_csl($csl)
+{
+	$keys = array('_id', 'author', 'title', 'container-title', 'ISSN', 'volume', 'issue', 'page', 'issued', 'DOI');
+	
+	foreach ($csl as $k => $v)
+	{
+		if (!in_array($k, $keys))
+		{
+			unset($csl->{$k});
+		}
+	}
+
+	return $csl;
+}
+
+//--------------------------------------------------------------------------------------------------
+function get_works_by_container($container)
+{
+	global $config;
+	global $couch;
+	
+	$result = array();
+	
+	$startkey = array($container, 0);
+	$endkey = array($container, 2030, new stdclass);
+	
+	$parameters = array(
+		'startkey' 		=> json_encode($startkey, JSON_UNESCAPED_UNICODE),
+		'endkey'		=> json_encode($endkey, JSON_UNESCAPED_UNICODE),
+		'reduce' 		=> 'false',
+		//'group_level' 	=> 2,
+		'include_docs'	=> 'true'
+	);
+		
+	$url = '_design/interface/_view/container-year-page?' . http_build_query($parameters);
+		
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+		
+	$response_obj = json_decode($resp);
+	
+	if ($response_obj)
+	{
+		foreach ($response_obj->rows as $row)
+		{
+			$year = $row->key[1];
+			
+			if (!isset($result[$year]))
+			{
+				$result[$year] = array();
+			}
+			
+			// filter out other members of the cluster
+			if ($row->doc->_id == $row->doc->citebank->cluster)
+			{
+				$result[$year][] = 	simplify_csl($row->doc);
+			}
+		}
+	}
+	
+	return $result;
+}
+
+//--------------------------------------------------------------------------------------------------
+function get_works_by_family($family)
+{
+	global $config;
+	global $couch;
+	
+	$result = array();
+	
+	$startkey = array($family, 0);
+	$endkey = array($family, 2030, new stdclass);
+	
+	$parameters = array(
+		'startkey' 		=> json_encode($startkey, JSON_UNESCAPED_UNICODE),
+		'endkey'		=> json_encode($endkey, JSON_UNESCAPED_UNICODE),
+		'reduce' 		=> 'false',
+		//'group_level' 	=> 2,
+		'include_docs'	=> 'true'
+	);
+	
+	$url = '_design/interface/_view/family-year?' . http_build_query($parameters);
+	
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+		
+	$response_obj = json_decode($resp);
+	
+	if ($response_obj)
+	{
+		foreach ($response_obj->rows as $row)
+		{
+			$year = $row->key[1];
+			
+			if (!isset($result[$year]))
+			{
+				$result[$year] = array();
+			}
+			
+			// filter out other members of the cluster
+			if ($row->doc->_id == $row->doc->citebank->cluster)
+			{
+				$result[$year][] = 	simplify_csl($row->doc);
+			}
+		}
+	}
+	
+	return $result;
+}
+
+//--------------------------------------------------------------------------------------------------
+// Get unstructured references for a given $id (typically a DOI)
+// Intention is that these be parsed and converted into CSL
+function get_unstructured_references($id)
+{
+	global $config;
+	global $couch;
+	
+	$result = array();
+	
+	$parameters = array(
+		'key' 			=> '"' . $id . '"'
+	);
+
+	$url = '_design/interface/_view/unstructured-simple?' . http_build_query($parameters);
+	
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+	
+	$response_obj = json_decode($resp);
+	
+	if ($response_obj)
+	{
+		foreach ($response_obj->rows as $row)
+		{
+			$result[$row->value->key] = $row->value->unstructured;
+		}
+	}
+	
+	return $result;
+}
+
+
+//--------------------------------------------------------------------------------------------------
+// get members of cluster
+function get_cluster_members($id)
+{
+	global $config;
+	global $couch;
+	
+	$result = array();
+	
+	$parameters = array(
+		'key' 			=> '"' . $id . '"'
+	);
+
+	$url = '_design/interface/_view/cluster?' . http_build_query($parameters);
+	
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+	
+	$response_obj = json_decode($resp);
+	
+	if ($response_obj)
+	{
+		foreach ($response_obj->rows as $row)
+		{
+			$result[] = $row->value;
+		}
+	}
+	
+	return $result;
+}
+
+
+
+//--------------------------------------------------------------------------------------------------
+function display_containers_first_letters($callback = '')
+{
+	$status = 404;
+	
+	$result = get_containers_first_letters();
+	
+	if (count($result) > 0)
+	{
+		$status = 200;
+	}
+	
+	api_output($result, $callback, $status);
+}
+
+//--------------------------------------------------------------------------------------------------
+function display_containers_by_letter($letter, $callback = '')
+{
+	$status = 404;
+	
+	$result = get_containers_by_letter($letter);
+	
+	if (count($result) > 0)
+	{
+		$status = 200;
+	}
+	
+	api_output($result, $callback, $status);
+}
+
+//--------------------------------------------------------------------------------------------------
+function display_works_by_container($container, $callback = '')
+{
+	$status = 404;
+	
+	$result = get_works_by_container($container);
+	
+	if (count($result) > 0)
+	{
+		$status = 200;
+	}
+	
+	api_output($result, $callback, $status);
+}
+
+//--------------------------------------------------------------------------------------------------
+function display_family_first_letters($callback = '')
+{
+	$status = 404;
+	
+	$result = get_family_first_letters();
+	
+	if (count($result) > 0)
+	{
+		$status = 200;
+	}
+	
+	api_output($result, $callback, $status);
+}
+
+
+//--------------------------------------------------------------------------------------------------
+function display_authors_by_letter($letter, $callback = '')
+{
+	$status = 404;
+	
+	$result = get_authors_by_letter($letter);
+	
+	if (count($result) > 0)
+	{
+		$status = 200;
+	}
+	
+	api_output($result, $callback, $status);
+}
+
+//--------------------------------------------------------------------------------------------------
+function display_works_by_family($family, $callback = '')
+{
+	$status = 404;
+	
+	$result = get_works_by_family($family);
+	
+	if (count($result) > 0)
+	{
+		$status = 200;
+	}
+	
+	api_output($result, $callback, $status);
+}
+
+//--------------------------------------------------------------------------------------------------
+function get_volumes_by_year($year)
+{
+	global $config;
+	global $couch;
+	
+	$result = array();
+	
+	$startkey = array((Integer)$year);
+	$endkey = array((Integer)$year, new stdclass);
+	
+	$parameters = array(
+		'startkey' 		=> json_encode($startkey, JSON_UNESCAPED_UNICODE),
+		'endkey'		=> json_encode($endkey, JSON_UNESCAPED_UNICODE),
+		'reduce' 		=> 'true',
+		'group_level' 	=> 2,
+	);
+
+	$url = '_design/matching/_view/hash?' . http_build_query($parameters);
+	
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+	
+	$response_obj = json_decode($resp);
+	
+	if ($response_obj)
+	{
+		foreach ($response_obj->rows as $row)
+		{
+			$result[] = $row->key[1];
+		}
+	}
+	
+	return $result;
+}
+
+//--------------------------------------------------------------------------------------------------
+function get_works_by_volume_by_year($year, $volume)
+{
+	global $config;
+	global $couch;
+	
+	$result = array();
+	
+	$startkey = array((Integer)$year, (Integer)$volume);
+	$endkey = array((Integer)$year, (Integer)$volume, new stdclass);
+	
+	$parameters = array(
+		'startkey' 		=> json_encode($startkey, JSON_UNESCAPED_UNICODE),
+		'endkey'		=> json_encode($endkey, JSON_UNESCAPED_UNICODE),
+		'reduce' 		=> 'false',
+		'include_docs' 	=> 'true',
+	);
+
+	$url = '_design/matching/_view/hash?' . http_build_query($parameters);
+	
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+	
+	$response_obj = json_decode($resp);
+	
+	if ($response_obj)
+	{
+		foreach ($response_obj->rows as $row)
+		{
+			$page = $row->key[2];
+			
+			if (!isset($result[$page]))
+			{
+				$result[$page] = array();
+			}
+
+			$result[$page][] = 	simplify_csl($row->doc);
+		}
+	}
+	
+	return $result;
+}
+
+//--------------------------------------------------------------------------------------------------
+// part of [year, volume, spage] hash
+function display_volumes_by_year($year, $callback = '')
+{
+	$status = 404;
+	
+	$result = get_volumes_by_year($year);
+	
+	if (count($result) > 0)
+	{
+		$status = 200;
+	}
+	
+	api_output($result, $callback, $status);
+}
+
+//--------------------------------------------------------------------------------------------------
+// part of [year, volume, spage] hash
+function display_works_by_volume_by_year($year, $volume, $callback = '')
+{
+	$status = 404;
+	
+	$result = get_works_by_volume_by_year($year, $volume);
+	
+	if (count($result) > 0)
+	{
+		$status = 200;
+	}
+	
+	api_output($result, $callback, $status);
+}
+
+
+//--------------------------------------------------------------------------------------------------
+function default_display()
+{
+	echo "hi";
+}
+
+//--------------------------------------------------------------------------------------------------
+// URL (e.g., PDF) exists
+function display_head ($url, $callback)
+{
+	$obj = new stdclass;
+	$obj->url = $url;
+	$obj->found = false;
+
+	$status = 404;
+	
+	if (api_head($url))
+	{
+		$status = 200;
+		$obj->found = true;
+	}
+		
+	api_output($obj, $callback, $status);
+}	
+	
+//--------------------------------------------------------------------------------------------------
+// One record (as array)
+function display_one_record ($id, $format= '', $callback = '')
+{
+	$status = 404;
+	
+	$obj = array();
+	
+	$record = get_one_record($id);
+	
+	if ($record)
+	{
+		$status = 200;
+		
+		switch ($format)
+		{
+			default:
+				$obj[] = $record;
+				break;
+		}
+
+	}
+	else
+	{
+		$obj = new stdclass;
+		$obj->error = "Record $id not found";
+	}
+		
+	api_output($obj, $callback, $status);
+}
+
+//--------------------------------------------------------------------------------------------------
+// Record(s) with DOI
+function display_records_with_doi ($doi, $format= '', $callback = '')
+{
+	$status = 404;
+	
+	$obj = array();
+	
+	$records = get_from_doi($doi);
+	
+	$result = array();
+	
+	foreach ($records as $obj)
+	{
+		$result[] = $obj;
+	}
+	
+	if (count($records) > 0)
+	{
+		$status = 200;
+	}
+		
+	api_output($result, $callback, $status);
+}
+
+//--------------------------------------------------------------------------------------------------
+// Multiple records
+function display_multiple_records ($ids, $format= '', $callback = '')
+{
+	$status = 404;
+	$result = array();
+	
+	$records = get_multiple_records($ids);
+	
+	$result = array();
+	
+	foreach ($records as $obj)
+	{
+		$result[] = $obj;
+	}
+	
+	if (count($records) > 0)
+	{
+		$status = 200;
+	}	
+		
+	api_output($result, $callback, $status);
+}	
+
+//--------------------------------------------------------------------------------------------------
+// Get consensus of multiple records that are listed by id
+function display_consensus_for_records ($ids, $callback = '', $debug = false)
+{	
+	$status = 404;
+	
+	$obj = null;
+	
+	$records = get_multiple_records($ids);
+	
+	//print_r($records);
+	
+	if (count($records) > 0)
+	{
+		$obj = merge($records, []);
+		
+		if (!$debug)
+		{
+			$obj = $obj->consensus;
+		}
+	}
+		
+	api_output($obj, $callback, 200);
+}
+
+//--------------------------------------------------------------------------------------------------
+// Get consensus of multiple records provided as array of CSL-JSON
+function display_consensus_for_csl ($records, $callback = '', $debug = false)
+{	
+	$status = 404;
+	
+	$obj = null;
+	
+	if (count($records) > 0)
+	{
+		$obj = merge($records, []);
+		
+		if (!$debug)
+		{
+			$obj = $obj->consensus;
+		}
+	}
+		
+	api_output($obj, $callback, 200);
+}
+
+//--------------------------------------------------------------------------------------------------
+// Compare two records by computing feature vector
+function display_features_for_records ($ids, $callback = '', $debug = false)
+{	
+	$status = 404;
+	
+	$obj = array();
+	
+	// records for ids
+	$records = get_multiple_records($ids);
+	
+	if (count($records) == 2)
+	{	
+		$obj = citation_pair_to_feature_vector($records, $debug);
+	}
+
+	api_output($obj, $callback, 200);	
+}
+
+
+//--------------------------------------------------------------------------------------------------
+// Compare two records by computing feature vector
+function display_features_for_csl ($records, $callback = '', $debug = false)
+{	
+	$status = 404;
+	
+	$obj = array();
+		
+	if (count($records) == 2)
+	{	
+		$obj = citation_pair_to_feature_vector($records, $debug);
+	}
+
+	api_output($obj, $callback, 200);	
+}
+
+/*
+//--------------------------------------------------------------------------------------------------
+// Cluster a set of ids
+function display_cluster ($ids, $callback = '')
+{	
+	$status = 404;
+	
+	$obj = array();
+	
+	// records for ids
+	$records = get_records_for_ids($ids);
+		
+	// simplest approach is simply to cluster the supplied ids (but testing as we do it)
+	$obj = update_clusters_for_records($records);
+
+	api_output($obj, $callback, 200);	
+}
+
+
+*/
+
+//--------------------------------------------------------------------------------------------------
+// Unstructured citations as array of strings (that we can process)
+function display_unstructured ($id, $callback = '')
+{
+	$status = 404;
+	$result = array();
+	
+	$result = get_unstructured_references($id);
+	
+	if (count($result) > 0)
+	{
+		$status = 200;
+	}	
+		
+	api_output($result, $callback, $status);
+}	
+
+
+//--------------------------------------------------------------------------------------------------
+function display_cluster ($id, $callback = '')
+{
+	$status = 404;
+	
+	$members = array();
+	
+	$members = get_cluster_members($id);
+	
+	if (count($members) > 0)
+	{
+		$status = 200;
+		
+		display_consensus_for_records($members, $callback);
+	}	
+		
+	api_output(null, $callback, $status);
+}	
+
+
+//--------------------------------------------------------------------------------------------------
+function main()
+{
+	global $config;
+
+	$callback = '';
+	$handled = false;
+	
+	$post_content = file_get_contents('php://input');
+	
+	// If no query parameters 
+	if (count($_GET) == 0 && $post_content == '')
+	{
+		default_display();
+		exit(0);
+	}
+	
+	if (isset($_GET['callback']))
+	{	
+		$callback = $_GET['callback'];
+	}
+	
+	$debug = false;			
+	if (isset($_GET['debug']))
+	{
+		$debug = true;
+	}	
+	
+	// Submit job
+	
+	// get one record from doc id
+	if (!$handled)
+	{
+		if (isset($_GET['id']))
+		{	
+			$id = $_GET['id'];
+			
+			$format = '';
+			
+			if (isset($_GET['format']))
+			{
+				$format = $_GET['format'];
+			}			
+			
+			if (isset($_GET['cites']))
+			{		
+				display_unstructured($id, $callback);	
+				$handled = true;			
+			}
+			
+			if (isset($_GET['cluster']))
+			{		
+				display_cluster($id, $callback);	
+				$handled = true;			
+			}
+						
+			if (!$handled)
+			{
+				display_one_record($id, $format, $callback);
+				$handled = true;
+			}
+			
+		}
+	}
+	
+	// get record(s) by external identifier
+	if (!$handled)
+	{
+		if (isset($_GET['doi']))
+		{	
+			$doi = $_GET['doi'];
+			
+			$format = '';
+			
+			if (isset($_GET['format']))
+			{
+				$format = $_GET['format'];
+			}			
+			
+			if (!$handled)
+			{
+				display_records_with_doi($doi, $format, $callback);
+				$handled = true;
+			}
+			
+		}
+	}
+	
+	
+	// multiple records by delimited list of doc ids
+	if (!$handled)
+	{
+		if (isset($_GET['ids']))
+		{		
+			$delimited_ids = $_GET['ids'];
+			
+			$ids = preg_split('/[\||,]\s*/', $delimited_ids);
+			
+			if (isset($_GET['consensus']))
+			{			
+				display_consensus_for_records($ids, $callback, $debug);
+				$handled = true;
+			}	
+			
+			if (isset($_GET['features']))
+			{			
+				display_features_for_records($ids, $callback, $debug);
+				$handled = true;
+			}	
+						
+			/*
+			if (!$handled)
+			{
+				display_versions($cluster_id, $callback);
+				$handled = true;
+			}
+			*/
+			
+			// return a list of records
+			if (!$handled)
+			{
+				$format = '';			
+				if (isset($_GET['format']))
+				{
+					$format = $_GET['format'];
+				}			
+
+				display_multiple_records($ids, $format, $callback);
+				$handled = true;
+			}
+		}
+	}	
+	
+	// handle set of documents
+	if (!$handled)
+	{
+		if ($post_content != '')
+		{
+		
+			$error = parse_json($post_content);
+			
+			if ($error->code == 0)
+			{
+				// OK
+				$docs = json_decode($post_content);
+				
+				if (is_array($docs))
+				{
+					if (!$handled)
+					{				
+						if (isset($_GET['consensus']))
+						{
+							display_consensus_for_csl ($docs, $callback, $debug);
+							$handled = true;
+						}
+					}	
+
+					if (!$handled)
+					{				
+						if (isset($_GET['features']))
+						{
+							display_features_for_csl ($docs, $callback, $debug);
+							$handled = true;
+						}
+					}	
+					
+				}
+				else
+				{
+					$obj = new stdclass;
+					$obj->status = 400;
+					$obj->msg = "Expecting array of CSL-JSON documents";
+					api_output($error, $callback);	
+				}			
+			}
+			else
+			{
+				// Bad JSON
+				$error->status = 400;
+				api_output($error, $callback);					
+			}
+		}
+	}
+	
+	// containers
+	if (!$handled)
+	{
+		if (isset($_GET['container']))
+		{		
+			if (isset($_GET['first']))
+			{
+				display_containers_first_letters($callback);
+				$handled = true;
+			}			
+
+			if (isset($_GET['letter']))
+			{
+				$letter = $_GET['letter'];
+				display_containers_by_letter($letter, $callback);
+				
+				$handled = true;
+			}	
+			
+			if (isset($_GET['title']))
+			{
+				$title = $_GET['title'];
+				display_works_by_container($title, $callback);
+				$handled = true;
+			}	
+			
+		}
+	}	
+	
+	// authors
+	if (!$handled)
+	{
+		if (isset($_GET['author']))
+		{		
+			if (isset($_GET['first']))
+			{
+				display_family_first_letters($callback);
+				$handled = true;
+			}			
+		
+			if (isset($_GET['letter']))
+			{
+				$letter = $_GET['letter'];
+				display_authors_by_letter($letter, $callback);
+				
+				$handled = true;
+			}	
+			
+			if (isset($_GET['family']))
+			{
+				$family = $_GET['family'];
+				display_works_by_family($family, $callback);				
+				$handled = true;
+			}
+			
+		}
+	}	
+	
+	// year, volume, page hash
+	if (!$handled)
+	{
+		if (isset($_GET['hash']))
+		{		
+			if (isset($_GET['year']))
+			{
+				$year = $_GET['year'];
+				
+				if (isset($_GET['volume']))
+				{
+					$volume = $_GET['volume'];
+					display_works_by_volume_by_year($year, $volume, $callback);				
+					$handled = true;
+				}
+				
+				if (!$handled)
+				{
+					display_volumes_by_year($year, $callback);
+					$handled = true;
+				}
+			}			
+			
+		}
+	}	
+		
+	
+	if(0)
+	{
+	
+	// clustering
+	if (!$handled)
+	{
+		if (isset($_GET['cluster']))
+		{	
+			$ids = preg_split('/[\||,]\s*/', $_GET['cluster']);
+			
+			display_cluster($ids, $callback);
+			$handled = true;
+		}
+	}
+	
+	
+	
+	// search by DOI
+	if (!$handled)
+	{
+		if (isset($_GET['doi']))
+		{	
+			$q = 'doi:' . $_GET['doi'];
+			display_search($q, $callback);
+			
+			$handled = true;
+		}
+		
+	}	
+	
+	// container
+	if (!$handled)
+	{
+		if (isset($_GET['container']))
+		{	
+			if (isset($_GET['first']))
+			{
+				display_container_first_letters($callback);
+				$handled = true;
+			}			
+		
+			if (isset($_GET['letter']))
+			{
+				display_container_by_letter($_GET['letter'], $callback);
+				$handled = true;
+			}	
+			
+			if (!$handled)
+			{
+				$q = 'container:' . $_GET['container'];
+				display_search($q, $callback);
+				$handled = true;
+			}
+								
+		}
+	}
+	
+	
+	// versions and consensus
+	if (!$handled)
+	{
+		if (isset($_GET['versions']))
+		{	
+			$cluster_id = $_GET['versions'];
+			
+			if (isset($_GET['consensus']))
+			{
+				display_consensus($cluster_id, $callback);
+				$handled = true;
+			}						
+			
+			if (!$handled)
+			{
+				display_versions($cluster_id, $callback);
+				$handled = true;
+			}
+		}
+	}	
+	
+	// feature vector for two records
+	if (!$handled)
+	{
+		if (isset($_GET['pair']))
+		{	
+			$ids = preg_split('/[\||,]\s*/', $_GET['pair']);
+			
+			if (count($ids) == 2)
+			{
+				display_feature($ids);
+			}
+			$handled = true;
+		}
+	}	
+	
+	// search
+	if (!$handled)
+	{
+		if (isset($_GET['q']))
+		{	
+			$q = $_GET['q'];
+			
+			// Elastic
+			$from = 0;
+			$size = 10;
+			
+			$filter = null;
+			
+			display_search($q, $callback);
+			
+			$handled = true;
+		}
+			
+	}
+	}
+	
+	if (!$handled)
+	{
+		default_display();
+	}
+
+}
+
+
+main();
+
+?>

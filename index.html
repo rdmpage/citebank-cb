@@ -1,0 +1,228 @@
+<html>
+<head>
+	<meta charset="UTF-8">
+
+	<link rel="stylesheet" href="css/main.css">
+
+	<style>
+		
+	.code {
+    font-family:monospace;
+    white-space:pre-wrap; /* pre-wrap means text wraps, pre by itself desn't wrap */
+    font-size:0.8em;
+    padding:1em;
+    border:1px solid #DDD;
+    margin:1em;
+	}
+
+	</style>
+	
+	<script src="js/citation.js" type="text/javascript"></script>
+	<script>
+		const Cite = require('citation-js')
+	</script>	
+	
+</head>
+<body>
+
+<h1>CiteBank</h1>
+
+<h2>
+	<a href="containers.html">Containers</a> 
+	| 
+	<a href="authors.html">Authors</a>
+</h2>
+
+<div id = "output"></div>
+<div id = "explore"></div>
+<!-- <div id = "debug" class="code"></div> -->
+<div id = "cluster" class="code"></div>
+
+<script>
+
+	// very crude parsing of names
+	function parse_author(author) {
+	  var a = {};
+	  
+	  if (author.family) {
+		a.family = author.family;
+	  }
+	  if (author.given) {
+		a.given = author.given;
+	  }
+	  if (author.literal) {
+		a.literal = author.literal;
+	  }
+	
+	  if (!a.family && a.literal) {
+		var m = a.literal.match(/(.*),\s*(.*)/);
+		if (m) {
+		  a.family = m[1];
+		  a.given = m[2]
+		} else {
+		  m = a.literal.match(/(.*)\s+([^\s]+)$/);
+		  if (m) {
+		   a.family = m[2];
+		   a.given = m[1]
+		 }
+		}
+	  }
+	  return a;
+	}
+
+	function get_hash(doc) {
+	  var hash = [];
+
+	  if (doc.issued) {
+	    if (typeof doc.issued === 'object') {
+	      hash.push(parseInt(doc.issued['date-parts'][0][0]));
+	    }
+	    else {
+	      hash.push(parseInt(doc.issued));
+	    }
+	  }
+
+	  if (doc.volume) {
+	    hash.push(parseInt(doc.volume));
+	  }
+
+	  if (doc['page-first']) {
+	    hash.push(parseInt(doc['page-first']));
+	  }
+	  else {
+	  	if (doc.page) {
+			var m = doc.page.match(/(\d+)[-|–](\d+)/);
+			if (m) {
+			  hash.push(parseInt(m[1]));
+			} else {
+			  hash.push(parseInt(doc.page));
+			}
+		}
+	  }
+
+	  return hash;
+	}
+	
+	function get_cluster(cluster_id) {
+		document.getElementById("cluster").innerHTML = "";
+		
+		var url = "api.php?id=" + cluster_id + "&cluster";
+
+		fetch(url).then(
+			function(response){
+				if (response.status != 200) {
+					console.log("Looks like there was a problem. Status Code: " + response.status);
+					return;
+				}
+						
+				response.json().then(function(data) {
+					
+					document.getElementById("cluster").innerHTML = JSON.stringify(data);
+				});
+		});
+	}
+	
+
+	const urlParams = new URLSearchParams(window.location.search);
+
+	var id = urlParams.get('id');
+
+	// Display one record
+	if (id) {
+	
+		var url = "api.php?id=" + encodeURIComponent(id)
+		
+		fetch(url).then(
+			function(response){
+				if (response.status != 200) {
+					console.log("Looks like there was a problem. Status Code: " + response.status);
+					return;
+				}
+						
+				response.json().then(function(data) {
+					var html = "<h2>" + data[0].title + "</h2>";
+					
+					if (data[0]['original-title']) {
+						html += "<h2>" + data[0]['original-title'] + "</h2>";
+					}
+
+					if (data[0].abstract) {
+						html += "<blockquote>" + data[0].abstract + "</blockquote>";
+					}
+					
+					html += '<ul>';
+					
+					if (data[0].DOI) {
+						html += '<li><a href="https://doi.org/' + data[0].DOI + '" target="_new">doi:' + data[0].DOI + '</a></li>';					
+					}
+					
+					html += '</ul>';
+					
+					// Nicely format the citation
+					var citation = new Cite(data[0]);
+					
+					html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
+					
+					// html += JSON.stringify(data);
+					
+					document.getElementById("output").innerHTML = html;
+					
+					// Debugging, show keys that might help in clustering
+					var explore_html = '<h3>Possible keys to cluster on</h3><ul>';
+
+					// author name
+					if (data[0].author) {
+						if (data[0].author[0]) {
+						    var author = data[0].author[0];
+        					author = parse_author(author);
+ 							if (author.family) {
+								explore_html += '<li><a href="authors.html?family=' + author.family + '">' + author.family + '</a></li>';
+							}						
+						}
+					}
+					
+					// container
+					if (data[0]['container-title']) {
+						var container = data[0]['container-title'];						
+						if (Array.isArray(container)) {
+							container = container[0];
+						}
+						explore_html += '<li><a href="containers.html?title=' + container+ '">' + container + '</a></li>';					
+					}
+					
+					// year-volume-page hash
+					var hash = get_hash(data[0]);
+					
+					explore_html += '<li>';
+					
+					if (hash.length > 1) {
+						explore_html += '<a href="years.html?year=' + hash[0] + '&volume=' + hash[1] + '">';
+					}					
+					
+					explore_html += JSON.stringify(hash);
+					
+					if (hash.length > 1) {
+						explore_html += '</a>';
+					}
+									
+					explore_html += '</li>';					
+					explore_html += '</ul>';
+					
+					document.getElementById("explore").innerHTML = explore_html;
+					
+					// document.getElementById("debug").innerHTML = JSON.stringify(data, null, 2);
+					
+					// cluster 
+					get_cluster(data[0].citebank.cluster);
+					
+					
+				});
+		});
+	}
+		   
+
+
+</script>
+
+</body>
+</html>

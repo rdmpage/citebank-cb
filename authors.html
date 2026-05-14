@@ -1,0 +1,142 @@
+<html>
+<head>
+	<meta charset="UTF-8">
+	
+	<link rel="stylesheet" href="css/main.css">
+	
+	<script src="js/citation.js" type="text/javascript"></script>
+	<script>
+		const Cite = require('citation-js')
+	</script>
+	
+</head>
+<body>
+
+<h1>CiteBank</h1>
+
+<h2><a href=".">Home</a> | Authors</h2>
+
+<div id = "letters">
+
+</div>
+
+<div style="clear:both;"></div>
+
+<!--
+<p>
+Good examples include 
+<a href="?family=Roth">Roth</a>, 
+<a href="?family=Viette">Viette</a>,
+<a href="?family=Schedl">Schedl</a>
+</p>
+-->
+
+<div id = "authors">
+<div id = "works">
+
+</div>
+
+
+<script>
+	const urlParams = new URLSearchParams(window.location.search);
+
+
+	function list_authors(letter) {
+		document.getElementById("authors").innerHTML = "";
+		
+		var url = "api.php?author&letter=" + letter;
+
+		fetch(url).then(
+			function(response){
+				if (response.status != 200) {
+					console.log("Looks like there was a problem. Status Code: " + response.status);
+					return;
+				}
+						
+				response.json().then(function(data) {
+					var html = "<h2>" + letter + "</h2>";
+					
+					html += '<div class="multicolumn">';
+					html += '<ul>';
+					
+					for (var i in data) {
+						html += '<li><a href="?family=' + encodeURIComponent(data[i]) + '">' + data[i] + '</li>';
+					}
+					
+					html += '</ul>';
+					html += '</div>';
+					
+					document.getElementById("authors").innerHTML = html;
+				});
+		});
+	}
+
+	var url = "api.php?container&first";
+	
+	fetch(url).then(
+		function(response){
+			if (response.status != 200) {
+				console.log("Looks like there was a problem. Status Code: " + response.status);
+				return;
+			}
+					
+			response.json().then(function(data) {
+				//alert(JSON.stringify(data));
+				letters = data;  
+				var html = '';
+				html += '<ul style="list-style-type: none;">';
+				for (var i in letters) {
+					html += '<li style="float: left;padding:0.3em"><a href="#" onclick="list_authors(\'' + i + '\')">' + i + '</a></li>';
+				}
+				html += '</ul>';
+				document.getElementById("letters").innerHTML = html;
+				
+			});
+	});
+	
+	var family = urlParams.get('family');
+	
+	if (family) {
+		var url = "api.php?author&family=" + encodeURIComponent(family)
+		
+		fetch(url).then(
+			function(response){
+				if (response.status != 200) {
+					console.log("Looks like there was a problem. Status Code: " + response.status);
+					return;
+				}
+						
+				response.json().then(function(data) {
+					var html = "<h3>" + family + "</h3>";					
+					
+					for (var year in data) {
+						html += '<h4>' + year + '</h4>';						
+
+						html += '<ul style="list-style: none;">';
+						for (var i in data[year]) {
+							var citation = new Cite(data[year][i]);
+							
+							var id = data[year][i]._id;
+							id = id.replace('#', '%23');
+							html += '<li style="padding:0.3em;">';
+							html += '<a href="./?id=' + id + '">';							
+							html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
+							html += '</a>';
+							html += '</li>';
+						}
+						html += '</ul>';
+
+					}
+
+					document.getElementById("works").innerHTML = html;
+				});
+		});
+		
+	} else {
+		list_authors('A');
+	}
+
+</script>
+
+</body>
+</html>

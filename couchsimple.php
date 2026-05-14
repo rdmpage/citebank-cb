@@ -144,6 +144,7 @@ class CouchSimple
 					$resp = $this->send("PUT", "/" . $this->database . "/" . urlencode($id), json_encode($obj));
 				}
 				//var_dump($resp);
+				break;
 	
 			default:
 				break;			

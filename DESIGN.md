@@ -125,7 +125,11 @@ The database is a collection of citation objects in various states of clustering
 
 ### Cluster ID
 
-The cluster ID is the lexicographically smallest `_id` among all members of the cluster. When merging two clusters, the smaller cluster ID wins. This means DOI URLs (which start with `https://doi.org/`) tend to become cluster IDs, since they're short and well-known.
+The cluster ID is the lexicographically smallest `_id` among all members of the cluster. When merging two clusters, the smaller cluster ID wins.
+
+The important property is that the cluster ID is a **deterministic function of cluster membership**, not of merge history. The same set of members always yields the same cluster ID, regardless of the order in which records were ingested or the order in which the worker visited them. This caps write churn: a member's `citebank.cluster` only needs rewriting when the cluster gains a smaller `_id`, not every time the worker re-processes the cluster.
+
+Lex-min is the simplest rule with this property. It also happens to bias toward DOI URLs (since `https://doi.org/...` sorts before `urn:citebank:...` and most other source URLs), giving cluster IDs that are short, legible, and resolvable — but this is a side benefit, not the rule.
 
 Every record has a `citebank.cluster` field. Unclustered records are singletons where `citebank.cluster` equals their own `_id`.
 
