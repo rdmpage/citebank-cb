@@ -65,6 +65,7 @@ function tier1_candidates($doi)
 // index.html so the worker and the matching/hash view agree on key shape.
 function compute_hash($doc)
 {
+	// Year.
 	if (!isset($doc->issued->{'date-parts'}[0][0]))
 	{
 		return null;
@@ -75,20 +76,38 @@ function compute_hash($doc)
 		return null;
 	}
 
-	if (!isset($doc->volume) || !preg_match('/(\d+)/', (string)$doc->volume, $vm))
+	// Volume. (int) cast mirrors parseInt: takes leading digits only, so
+	// "62" → 62 but "Fasc. 62" → 0 (rejected). Matches the view's strict rule.
+	if (!isset($doc->volume))
 	{
 		return null;
 	}
-	$volume = (int)$vm[1];
+	$volume = (int)$doc->volume;
+	if ($volume === 0)
+	{
+		return null;
+	}
 
+	// First page. Try page-first, then page-as-range, then page-as-int.
 	$page_first = null;
 	if (isset($doc->{'page-first'}))
 	{
-		$page_first = (int)$doc->{'page-first'};
+		$p = (int)$doc->{'page-first'};
+		if ($p !== 0) { $page_first = $p; }
 	}
-	else if (isset($doc->page) && preg_match('/(\d+)/', (string)$doc->page, $pm))
+	else if (isset($doc->page))
 	{
-		$page_first = (int)$pm[1];
+		$page = (string)$doc->page;
+		if (preg_match('/(\d+)[-–−|](\d+)/u', $page, $m))
+		{
+			$p = (int)$m[1];
+			if ($p !== 0) { $page_first = $p; }
+		}
+		else
+		{
+			$p = (int)$page;
+			if ($p !== 0) { $page_first = $p; }
+		}
 	}
 	if ($page_first === null)
 	{
@@ -156,6 +175,34 @@ function mark_visited($doc)
 
 //----------------------------------------------------------------------------------------
 
+// Run cluster_candidates if there's something to cluster. Always folds the
+// head-of-queue doc into the candidate set so its visited stamp gets advanced
+// even when the tier view didn't emit a matching key for it (e.g. JS/PHP
+// divergence in the hash computation). cluster_candidates dedupes by _id, so
+// adding the head doc is safe even when the view did emit it.
+function try_cluster($doc, $candidates, $tier_label)
+{
+	$by_id = array();
+	foreach ($candidates as $c)
+	{
+		$by_id[$c->_id] = $c;
+	}
+	if (!isset($by_id[$doc->_id]))
+	{
+		$by_id[$doc->_id] = $doc;
+	}
+
+	if (count($by_id) < 2)
+	{
+		return false;
+	}
+
+	cluster_candidates(array_values($by_id), $tier_label);
+	return true;
+}
+
+//----------------------------------------------------------------------------------------
+
 $doc = top_of_queue();
 
 if ($doc === null)
@@ -167,30 +214,20 @@ if ($doc === null)
 echo "visiting " . $doc->_id . "\n";
 
 // Tier 1: DOI exact.
-if (isset($doc->DOI))
+if (isset($doc->DOI) && try_cluster($doc, tier1_candidates($doc->DOI), 'doi-exact'))
 {
-	$candidates = tier1_candidates($doc->DOI);
-	if (count($candidates) >= 2)
-	{
-		cluster_candidates($candidates, 'doi-exact');
-		exit(0);
-	}
+	exit(0);
 }
 
 // Tier 2: year + volume + first-page hash.
 $hash = compute_hash($doc);
-if ($hash !== null)
+if ($hash !== null && try_cluster($doc, tier2_candidates($hash), 'hash-y-v-p'))
 {
-	$candidates = tier2_candidates($hash);
-	if (count($candidates) >= 2)
-	{
-		cluster_candidates($candidates, 'hash-y-v-p');
-		exit(0);
-	}
+	exit(0);
 }
 
-// No tier hit (singleton at every tier, or no usable blocking key). Stamp
-// visited so we advance. Tier 3 (Nouveau) will fit above this once it exists.
+// No candidates at any tier, or singleton. Stamp visited so we advance.
+// Tier 3 (Nouveau) will fit above this once it exists.
 mark_visited($doc);
 
 ?>
