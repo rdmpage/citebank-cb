@@ -20,8 +20,10 @@ else
 	$filename = $argv[1];
 }
 
-$file = @fopen($filename, "r") or die("couldn't open $filename");
-fclose($file);
+if (!is_readable($filename))
+{
+	die("couldn't open $filename\n");
+}
 
 $dois = array();
 
@@ -61,7 +63,7 @@ while (!feof($file_handle))
 			$dois[] = $doc->DOI;
 		}
 		
-		upload($doc, $force);
+		upload($doc, $filename, $force);
 				
 		// Give server a break every 100 items
 		if (($count++ % 100) == 0)

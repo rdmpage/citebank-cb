@@ -7,7 +7,7 @@ require_once (dirname(__FILE__) . '/couchsimple.php');
 
 //----------------------------------------------------------------------------------------
 // Upload a CSL-JSON document to CouchDB
-function upload($doc, $force = false)
+function upload($doc, $source='unknown', $force = false)
 {
 	global $config;
 	global $couch;
@@ -31,9 +31,14 @@ function upload($doc, $force = false)
 	if ($go)
 	{
 		$doc->citebank = new stdclass;
+		$doc->citebank->type = 'work';
 		$doc->citebank->format = 'application/vnd.citationstyles.csl+json';
+		
+		$doc->citebank->source = $source;
+		
 		$doc->citebank->created = date("c", time());
 		$doc->citebank->modified = $doc->citebank->created;
+		$doc->citebank->fetched  = $doc->citebank->created;
 		$doc->citebank->cluster = $doc->_id;
 			
 		$resp = $couch->send("PUT", "/" . $config['couchdb_options']['database'] . "/" . urlencode($doc->_id), json_encode($doc));

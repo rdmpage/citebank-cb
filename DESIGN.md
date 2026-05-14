@@ -103,18 +103,19 @@ Records are never hard-deleted. A `citebank.deleted` timestamp marks records as 
 
 ### Citation Graph
 
-The `is-referenced-by` array stores incoming citations — the inverse of CrossRef's `reference` field:
+The `is-referenced-by` array sits on the **cited** record and points outward to the **citer** — the paper whose reference list yielded this record. The DOI in each entry belongs to the citing paper; the cited record itself may have no DOI.
 
 ```json
 "is-referenced-by": [
-  { "DOI": "10.11646/zootaxa.4109.2.3", "source": "crossref-reference" },
-  { "DOI": "10.11646/zootaxa.3760.3.1", "source": "jats-xml" }
+  { "DOI": "10.11646/zootaxa.4109.2.3", "source": "crossref-reference" }
 ]
 ```
 
-This array accumulates over time as more citing articles are harvested. When records are clustered, the consensus merge aggregates `is-referenced-by` across all cluster members (union, deduplicated by DOI), giving a citation count that improves as sources are added.
+This field is populated only by parsing-based ingest paths — extracting CSL-JSON from the HTML or JATS-XML of individual papers' reference lists. Records fetched directly via DOI content negotiation (e.g. CrossRef) will not have it; CrossRef instead provides outbound `reference`.
 
-A CouchDB view on `reference-doi` (already exists in the `kv` design doc) indexes DOIs from reference lists. This can drive a worker task that builds `is-referenced-by` links on cited records.
+A record carries one `is-referenced-by` entry corresponding to the source it was extracted from. The array is set at ingest and **is not modified afterwards**. If the same work is cited from multiple sources, each ingest produces its own document (with its own `_id` and its own `is-referenced-by`); the documents are linked together by clustering, not by writing back to a single shared record.
+
+Citation count for a work is therefore a **query-time aggregation** across the members of its cluster, not part of the consensus merge. A CouchDB view emits `(cluster_id, is-referenced-by)` for each work; querying by `cluster_id` returns all citing contexts for the cluster, and the count grows as more citing sources are harvested without any record being rewritten.
 
 ## Clustering
 
