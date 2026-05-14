@@ -36,7 +36,7 @@ function merge ($objs, $confidence = array())
 	$result = new stdclass;
 	$result->debug = false;
 
-	$keys = array('author', 'title', 'container-title', 'volume', 'issue', 'page', 
+	$keys = array('author', 'title', 'container-title', 'volume', 'issue', 'page-first', 'page', 
 		'issued','DOI');
 
 	$unique_values = array();
@@ -52,7 +52,7 @@ function merge ($objs, $confidence = array())
 	
 	$result->confidence	= $confidence;
 	
-	$result->{'is_referenced-by'} = [];
+	$result->{'is-referenced-by'} = [];
 
 	//----------------------------------------------------------------------------------------
 	// clean and simplify object, make sure title and container-title are strings, and
@@ -159,6 +159,7 @@ function merge ($objs, $confidence = array())
 					case 'container-title':
 					case 'volume':
 					case 'issue':
+					case 'page-first':
 					case 'page':
 					case 'DOI':
 						$value = $obj->{$k};					
@@ -251,9 +252,6 @@ function merge ($objs, $confidence = array())
 				}
 		
 			}
-		
-
-	
 		}
 	}
 

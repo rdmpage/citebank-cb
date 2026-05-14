@@ -80,34 +80,34 @@
 	  return a;
 	}
 
+	// Mirrors the matching/hash view's emit logic: only push truthy ints, so
+	// volumes like "Fasc. 62" produce no entry rather than NaN/null.
 	function get_hash(doc) {
 	  var hash = [];
 
+	  var y = null;
 	  if (doc.issued) {
 	    if (typeof doc.issued === 'object') {
-	      hash.push(parseInt(doc.issued['date-parts'][0][0]));
-	    }
-	    else {
-	      hash.push(parseInt(doc.issued));
+	      y = parseInt(doc.issued['date-parts'][0][0]);
+	    } else {
+	      y = parseInt(doc.issued);
 	    }
 	  }
+	  if (y) hash.push(y);
 
-	  if (doc.volume) {
+	  if (doc.volume && parseInt(doc.volume)) {
 	    hash.push(parseInt(doc.volume));
 	  }
 
-	  if (doc['page-first']) {
+	  if (doc['page-first'] && parseInt(doc['page-first'])) {
 	    hash.push(parseInt(doc['page-first']));
-	  }
-	  else {
-	  	if (doc.page) {
-			var m = doc.page.match(/(\d+)[-|–](\d+)/);
-			if (m) {
-			  hash.push(parseInt(m[1]));
-			} else {
-			  hash.push(parseInt(doc.page));
-			}
-		}
+	  } else if (doc.page) {
+	    var m = String(doc.page).match(/(\d+)[-–−|](\d+)/);
+	    if (m && parseInt(m[1])) {
+	      hash.push(parseInt(m[1]));
+	    } else if (parseInt(doc.page)) {
+	      hash.push(parseInt(doc.page));
+	    }
 	  }
 
 	  return hash;
@@ -127,7 +127,7 @@
 						
 				response.json().then(function(data) {
 					
-					document.getElementById("cluster").innerHTML = JSON.stringify(data);
+					document.getElementById("cluster").innerHTML = JSON.stringify(data, null, 2);
 				});
 		});
 	}
@@ -221,7 +221,7 @@
 					
 					document.getElementById("explore").innerHTML = explore_html;
 					
-					// document.getElementById("debug").innerHTML = JSON.stringify(data, null, 2);
+					//document.getElementById("debug").innerHTML = JSON.stringify(data, null, 2);
 					
 					// cluster 
 					get_cluster(data[0].citebank.cluster);

@@ -740,7 +740,7 @@ function display_multiple_records ($ids, $format= '', $callback = '')
 
 //--------------------------------------------------------------------------------------------------
 // Get consensus of multiple records that are listed by id
-function display_consensus_for_records ($ids, $callback = '', $debug = false)
+function display_consensus_for_records ($ids, $callback = '')
 {	
 	$status = 404;
 	
@@ -754,10 +754,6 @@ function display_consensus_for_records ($ids, $callback = '', $debug = false)
 	{
 		$obj = merge($records, []);
 		
-		if (!$debug)
-		{
-			$obj = $obj->consensus;
-		}
 	}
 		
 	api_output($obj, $callback, 200);
@@ -985,7 +981,7 @@ function main()
 			
 			if (isset($_GET['consensus']))
 			{			
-				display_consensus_for_records($ids, $callback, $debug);
+				display_consensus_for_records($ids, $callback);
 				$handled = true;
 			}	
 			
