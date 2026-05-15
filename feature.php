@@ -10,6 +10,23 @@ error_reporting(E_ALL);
 require_once (dirname(__FILE__) . '/compare.php');
 
 //----------------------------------------------------------------------------------------
+// Coerce a CSL field that may be a string, a single-element array (e.g. CrossRef
+// container-title), null, or missing, into a non-empty string. Returns null if
+// there's nothing usable to compare.
+function csl_first_string($v)
+{
+	if (is_array($v))
+	{
+		$v = isset($v[0]) ? $v[0] : null;
+	}
+	if (!is_string($v) || $v === '')
+	{
+		return null;
+	}
+	return $v;
+}
+
+//----------------------------------------------------------------------------------------
 function feature_exact($name, $key, $obj1, $obj2)
 {
 	$same_key = $name . '_same';
@@ -45,25 +62,16 @@ function feature_levenstein($name, $key, $obj1, $obj2)
 	
 	if (isset($obj1->{$key}) && isset($obj2->{$key}))
 	{
-		$text1 = $obj1->{$key};
-		$text2 = $obj2->{$key};
-		
-		// Some sources (e.g., CrossRef) might be an array
-		if (is_array($text1))
+		$text1 = csl_first_string($obj1->{$key});
+		$text2 = csl_first_string($obj2->{$key});
+
+		if ($text1 !== null && $text2 !== null)
 		{
-			$text1 = $text1[0];
+			$comparison = compare_levenshtein($text1, $text2);
+			($comparison->normalised > 0.9) ? $feature[$same_key] = 1 : $feature[$diff_key] = 1;
 		}
-		if (is_array($text2))
-		{
-			$text2 = $text2[0];
-		}
-	
-		$comparison = compare_levenshtein($text1, $text2);
-		
-		($comparison->normalised > 0.9) ? $feature[$same_key] = 1 : $feature[$diff_key] = 1;
-	
 	}
-	
+
 	return $feature;
 }
 
@@ -80,25 +88,16 @@ function feature_subsequence($name, $key, $obj1, $obj2)
 	
 	if (isset($obj1->{$key}) && isset($obj2->{$key}))
 	{
-		$text1 = $obj1->{$key};
-		$text2 = $obj2->{$key};
-		
-		// Some sources (e.g., CrossRef) might be an array
-		if (is_array($text1))
+		$text1 = csl_first_string($obj1->{$key});
+		$text2 = csl_first_string($obj2->{$key});
+
+		if ($text1 !== null && $text2 !== null)
 		{
-			$text1 = $text1[0];
+			$comparison = compare_common_subsequence($text1, $text2);
+			($comparison->normalised > 0.8) ? $feature[$same_key] = 1 : $feature[$diff_key] = 1;
 		}
-		if (is_array($text2))
-		{
-			$text2 = $text2[0];
-		}
-	
-		$comparison = compare_common_subsequence($text1, $text2);
-		
-		($comparison->normalised > 0.8) ? $feature[$same_key] = 1 : $feature[$diff_key] = 1;
-	
 	}
-	
+
 	return $feature;
 }
 
