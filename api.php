@@ -306,11 +306,8 @@ function get_works_by_container($container)
 				$result[$year] = array();
 			}
 			
-			// filter out other members of the cluster
-			if ($row->doc->_id == $row->doc->citebank->cluster)
-			{
-				$result[$year][] = 	simplify_csl($row->doc);
-			}
+			// use cluster id as key so we cluster records
+			$result[$year][$row->doc->citebank->cluster] = 	simplify_csl($row->doc);
 		}
 	}
 	
@@ -353,11 +350,7 @@ function get_works_by_family($family)
 				$result[$year] = array();
 			}
 			
-			// filter out other members of the cluster
-			if ($row->doc->_id == $row->doc->citebank->cluster)
-			{
-				$result[$year][] = 	simplify_csl($row->doc);
-			}
+			$result[$year][$row->doc->citebank->cluster] = 	simplify_csl($row->doc);
 		}
 	}
 	
@@ -589,11 +582,7 @@ function get_works_by_volume_by_year($year, $volume)
 				$result[$page] = array();
 			}
 			
-			// filter out other members of the cluster
-			if ($row->doc->_id == $row->doc->citebank->cluster)
-			{
-				$result[$page][] = 	simplify_csl($row->doc);
-			}
+			$result[$page][$row->doc->citebank->cluster] = 	simplify_csl($row->doc);			
 		}
 	}
 	
