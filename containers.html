@@ -137,9 +137,8 @@
 							var citation = new Cite(data[year][i]);
 							
 							var id = data[year][i]._id;
-							id = id.replace('#', '%23');
 							html += '<li style="padding:0.3em;">';
-							html += '<a href="./?id=' + id + '">';							
+							html += '<a href="./?id=' + encodeURIComponent(id) + '">';
 							html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
 							html += '</a>';
 							html += '</li>';

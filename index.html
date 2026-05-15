@@ -116,7 +116,7 @@
 	function get_cluster(cluster_id) {
 		document.getElementById("cluster").innerHTML = "";
 		
-		var url = "api.php?clusterid=" + cluster_id;
+		var url = "api.php?clusterid=" + encodeURIComponent(cluster_id);
 
 		fetch(url).then(
 			function(response){
