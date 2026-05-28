@@ -275,12 +275,14 @@ function get_works_by_container($container)
 {
 	global $config;
 	global $couch;
-	
+
 	$result = array();
-	
+	$counts = array();
+	$kept_is_rep = array();
+
 	$startkey = array($container, 0);
 	$endkey = array($container, 2030, new stdclass);
-	
+
 	$parameters = array(
 		'startkey' 		=> json_encode($startkey, JSON_UNESCAPED_UNICODE),
 		'endkey'		=> json_encode($endkey, JSON_UNESCAPED_UNICODE),
@@ -288,29 +290,51 @@ function get_works_by_container($container)
 		//'group_level' 	=> 2,
 		'include_docs'	=> 'true'
 	);
-		
+
 	$url = '_design/interface/_view/container-year-page?' . http_build_query($parameters);
-		
+
 	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
-		
+
 	$response_obj = json_decode($resp);
-	
+
 	if ($response_obj)
 	{
 		foreach ($response_obj->rows as $row)
 		{
-			$year = $row->key[1];
-			
+			$year    = $row->key[1];
+			$cluster = $row->doc->citebank->cluster;
+			$is_rep  = ($row->doc->_id === $cluster);
+
 			if (!isset($result[$year]))
 			{
-				$result[$year] = array();
+				$result[$year]       = array();
+				$counts[$year]       = array();
+				$kept_is_rep[$year]  = array();
 			}
-			
-			// use cluster id as key so we cluster records
-			$result[$year][$row->doc->citebank->cluster] = 	simplify_csl($row->doc);
+
+			$counts[$year][$cluster] = ($counts[$year][$cluster] ?? 0) + 1;
+
+			// keep the representative (doc whose _id matches cluster id);
+			// fall back to whatever we saw first if the rep is absent from this slice
+			if (!isset($result[$year][$cluster]) || ($is_rep && !$kept_is_rep[$year][$cluster]))
+			{
+				$result[$year][$cluster]      = simplify_csl($row->doc);
+				$kept_is_rep[$year][$cluster] = $is_rep;
+			}
+		}
+
+		foreach ($result as $year => $clusters)
+		{
+			foreach ($clusters as $cluster => $csl)
+			{
+				$envelope = new stdclass;
+				$envelope->csl          = $csl;
+				$envelope->cluster_size = $counts[$year][$cluster];
+				$result[$year][$cluster] = $envelope;
+			}
 		}
 	}
-	
+
 	return $result;
 }
 
@@ -319,12 +343,14 @@ function get_works_by_family($family)
 {
 	global $config;
 	global $couch;
-	
+
 	$result = array();
-	
+	$counts = array();
+	$kept_is_rep = array();
+
 	$startkey = array($family, 0);
 	$endkey = array($family, 2030, new stdclass);
-	
+
 	$parameters = array(
 		'startkey' 		=> json_encode($startkey, JSON_UNESCAPED_UNICODE),
 		'endkey'		=> json_encode($endkey, JSON_UNESCAPED_UNICODE),
@@ -332,28 +358,49 @@ function get_works_by_family($family)
 		//'group_level' 	=> 2,
 		'include_docs'	=> 'true'
 	);
-	
+
 	$url = '_design/interface/_view/family-year?' . http_build_query($parameters);
-	
+
 	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
-		
+
 	$response_obj = json_decode($resp);
-	
+
 	if ($response_obj)
 	{
 		foreach ($response_obj->rows as $row)
 		{
-			$year = $row->key[1];
-			
+			$year    = $row->key[1];
+			$cluster = $row->doc->citebank->cluster;
+			$is_rep  = ($row->doc->_id === $cluster);
+
 			if (!isset($result[$year]))
 			{
-				$result[$year] = array();
+				$result[$year]      = array();
+				$counts[$year]      = array();
+				$kept_is_rep[$year] = array();
 			}
-			
-			$result[$year][$row->doc->citebank->cluster] = 	simplify_csl($row->doc);
+
+			$counts[$year][$cluster] = ($counts[$year][$cluster] ?? 0) + 1;
+
+			if (!isset($result[$year][$cluster]) || ($is_rep && !$kept_is_rep[$year][$cluster]))
+			{
+				$result[$year][$cluster]      = simplify_csl($row->doc);
+				$kept_is_rep[$year][$cluster] = $is_rep;
+			}
+		}
+
+		foreach ($result as $year => $clusters)
+		{
+			foreach ($clusters as $cluster => $csl)
+			{
+				$envelope = new stdclass;
+				$envelope->csl          = $csl;
+				$envelope->cluster_size = $counts[$year][$cluster];
+				$result[$year][$cluster] = $envelope;
+			}
 		}
 	}
-	
+
 	return $result;
 }
 
@@ -598,12 +645,14 @@ function get_works_by_volume_by_year($year, $volume)
 {
 	global $config;
 	global $couch;
-	
+
 	$result = array();
-	
+	$counts = array();
+	$kept_is_rep = array();
+
 	$startkey = array((Integer)$year, (Integer)$volume);
 	$endkey = array((Integer)$year, (Integer)$volume, new stdclass);
-	
+
 	$parameters = array(
 		'startkey' 		=> json_encode($startkey, JSON_UNESCAPED_UNICODE),
 		'endkey'		=> json_encode($endkey, JSON_UNESCAPED_UNICODE),
@@ -612,26 +661,47 @@ function get_works_by_volume_by_year($year, $volume)
 	);
 
 	$url = '_design/matching/_view/hash?' . http_build_query($parameters);
-	
+
 	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
-	
+
 	$response_obj = json_decode($resp);
-	
+
 	if ($response_obj)
 	{
 		foreach ($response_obj->rows as $row)
 		{
-			$page = $row->key[2];
-			
+			$page    = $row->key[2];
+			$cluster = $row->doc->citebank->cluster;
+			$is_rep  = ($row->doc->_id === $cluster);
+
 			if (!isset($result[$page]))
 			{
-				$result[$page] = array();
+				$result[$page]      = array();
+				$counts[$page]      = array();
+				$kept_is_rep[$page] = array();
 			}
-			
-			$result[$page][$row->doc->citebank->cluster] = 	simplify_csl($row->doc);			
+
+			$counts[$page][$cluster] = ($counts[$page][$cluster] ?? 0) + 1;
+
+			if (!isset($result[$page][$cluster]) || ($is_rep && !$kept_is_rep[$page][$cluster]))
+			{
+				$result[$page][$cluster]      = simplify_csl($row->doc);
+				$kept_is_rep[$page][$cluster] = $is_rep;
+			}
+		}
+
+		foreach ($result as $page => $clusters)
+		{
+			foreach ($clusters as $cluster => $csl)
+			{
+				$envelope = new stdclass;
+				$envelope->csl          = $csl;
+				$envelope->cluster_size = $counts[$page][$cluster];
+				$result[$page][$cluster] = $envelope;
+			}
 		}
 	}
-	
+
 	return $result;
 }
 

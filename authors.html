@@ -132,13 +132,16 @@ Good examples include
 
 						html += '<ul style="list-style: none;">';
 						for (var i in data[year]) {
-							var citation = new Cite(data[year][i]);
-							
-							var id = data[year][i]._id;
+							var entry = data[year][i];
+							var citation = new Cite(entry.csl);
+
 							html += '<li style="padding:0.3em;">';
 							html += '<a href="./?cluster=' + encodeURIComponent(i) + '">';
 							html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
 							html += '</a>';
+							if (entry.cluster_size > 1) {
+								html += ' <strong>(' + entry.cluster_size + ' records)</strong>';
+							}
 							html += '</li>';
 						}
 						html += '</ul>';

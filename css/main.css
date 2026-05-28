@@ -49,6 +49,9 @@ a:hover {
 	text-decoration:underline;
 }	
 
+.csl-bib-body, .csl-entry {
+	display: inline;
+}
 .csl-entry {
 	text-indent: 2em hanging;
 	/*
