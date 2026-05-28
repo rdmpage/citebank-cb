@@ -12,7 +12,7 @@ $force = true;
 $filename = '';
 if ($argc < 2)
 {
-	echo "Usage: upload_jsonl.php <CSL as JSONL file> \n";
+	echo "Usage: " . basename(__FILE__) . " <CSL as JSONL file> \n";
 	exit(1);
 }
 else
@@ -45,8 +45,8 @@ while (!feof($file_handle))
 			// Can we use the local id for this record?			
 			if (isset($doc->id))
 			{
-				// Can't use numbers
-				if (!is_numeric($doc->id))
+				// Can't use numbers as they are unlikely to be unique
+				if (!preg_match('/^(pub:)?\d+$/', $doc->id))
 				{
 					$doc->_id = $doc->id;
 				}

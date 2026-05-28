@@ -14,7 +14,15 @@
 
 <h1>CiteBank</h1>
 
-<h2><a href=".">Home</a> | Authors</h2>
+<h2>
+	<a href=".">Home</a>
+	|
+	<a href="containers.html">Containers</a> 
+	| 
+	Authors
+	| 
+	<a href="years.html">Years</a>	
+</h2>
 
 <div id = "letters">
 
@@ -128,7 +136,7 @@ Good examples include
 							
 							var id = data[year][i]._id;
 							html += '<li style="padding:0.3em;">';
-							html += '<a href="./?id=' + encodeURIComponent(id) + '">';
+							html += '<a href="./?cluster=' + encodeURIComponent(i) + '">';
 							html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
 							html += '</a>';
 							html += '</li>';

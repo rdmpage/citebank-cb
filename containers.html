@@ -37,7 +37,15 @@
 
 <h1>CiteBank</h1>
 
-<h2><a href=".">Home</a> | Containers</h2>
+<h2>
+	<a href=".">Home</a>
+	|
+	Containers 
+	| 
+	<a href="authors.html">Authors</a>
+	| 
+	<a href="years.html">Years</a>	
+</h2>
 
 <div id = "letters"></div>
 
@@ -136,9 +144,8 @@
 						for (var i in data[year]) {
 							var citation = new Cite(data[year][i]);
 							
-							var id = data[year][i]._id;
 							html += '<li style="padding:0.3em;">';
-							html += '<a href="./?id=' + encodeURIComponent(id) + '">';
+							html += '<a href="./?cluster=' + encodeURIComponent(i) + '">';
 							html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
 							html += '</a>';
 							html += '</li>';

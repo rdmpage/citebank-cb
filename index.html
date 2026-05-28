@@ -31,12 +31,12 @@
 	<a href="containers.html">Containers</a> 
 	| 
 	<a href="authors.html">Authors</a>
+	| 
+	<a href="years.html">Years</a>	
 </h2>
 
 <div id = "output"></div>
-<div id = "explore"></div>
-<!-- <div id = "debug" class="code"></div> -->
-<div id = "cluster" class="code"></div>
+<div id = "debug" class="code"></div>
 
 <script>
 
@@ -221,15 +221,139 @@
 					
 					document.getElementById("explore").innerHTML = explore_html;
 					
+				});
+		});
+	}
+	
+	// Display cluster
+	var cluster = urlParams.get('cluster');
+	if (cluster) {
+	
+		var url = "api.php?clusterid=" + encodeURIComponent(cluster);
+				
+		fetch(url).then(
+			function(response){
+				if (response.status != 200) {
+					console.log("Looks like there was a problem. Status Code: " + response.status);
+					return;
+				}
+						
+				response.json().then(function(data) {
+					var html = "<h2>" + escapeHtml(data.consensus.title) + "</h2>";
+
+					if (data.consensus.DOI) {
+						html += '<a href="https://doi.org/' + encodeURIComponent(data.consensus.DOI) + '" target="_new">doi:' + escapeHtml(data.consensus.DOI) + '</a><br />';
+					}
+					
+					// Nicely format the citation
+					var citation = new Cite(data.consensus);
+					
+					html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
+					
+					html += '<div>';
+					
+					// versions
+					if (data.members.length == 1) {
+					    html += "1 version";
+					} else {
+						html += data.members.length + " versions";
+					}
+					
+					// cited by
+					html += " cited by " + data.consensus['is-referenced-by'].length;
+					
+					html += '</div>';
+					
+					// simple lookup
+					html += '<div>';
+					html += '<a href="https://biostor.org/?q=' + encodeURIComponent(data.consensus.title) + '" target="_new">Search on BioStor</a><br />';
+					html += '</div>';
+				
+					document.getElementById("output").innerHTML = html;
+				
+					/*
+					var html = "<h2>" + escapeHtml(data[0].title) + "</h2>";
+
+					if (data[0]['original-title']) {
+						html += "<h2>" + escapeHtml(data[0]['original-title']) + "</h2>";
+					}
+
+					if (data[0].abstract) {
+						// abstract may contain intentional JATS/HTML markup (e.g. from CrossRef) — left unescaped
+						html += "<blockquote>" + data[0].abstract + "</blockquote>";
+					}
+
+					html += '<ul>';
+
+					if (data[0].DOI) {
+						html += '<li><a href="https://doi.org/' + encodeURIComponent(data[0].DOI) + '" target="_new">doi:' + escapeHtml(data[0].DOI) + '</a></li>';
+					}
+					
+					html += '</ul>';
+					
+					// Nicely format the citation
+					var citation = new Cite(data[0]);
+					
+					html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
+					
+					// html += JSON.stringify(data);
+					
+					document.getElementById("output").innerHTML = html;
+					
+					// Debugging, show keys that might help in clustering
+					var explore_html = '<h3>Possible keys to cluster on</h3><ul>';
+
+					// author name
+					if (data[0].author) {
+						if (data[0].author[0]) {
+						    var author = data[0].author[0];
+        					author = parse_author(author);
+ 							if (author.family) {
+								explore_html += '<li><a href="authors.html?family=' + encodeURIComponent(author.family) + '">' + escapeHtml(author.family) + '</a></li>';
+							}
+						}
+					}
+					
+					// container
+					if (data[0]['container-title']) {
+						var container = data[0]['container-title'];						
+						if (Array.isArray(container)) {
+							container = container[0];
+						}
+						explore_html += '<li><a href="containers.html?title=' + encodeURIComponent(container) + '">' + escapeHtml(container) + '</a></li>';
+					}
+					
+					// year-volume-page hash
+					var hash = get_hash(data[0]);
+					
+					explore_html += '<li>';
+					
+					if (hash.length > 1) {
+						explore_html += '<a href="years.html?year=' + hash[0] + '&volume=' + hash[1] + '">';
+					}					
+					
+					explore_html += JSON.stringify(hash);
+					
+					if (hash.length > 1) {
+						explore_html += '</a>';
+					}
+									
+					explore_html += '</li>';					
+					explore_html += '</ul>';
+					
+					document.getElementById("explore").innerHTML = explore_html;
+					
 					//document.getElementById("debug").innerHTML = JSON.stringify(data, null, 2);
 					
 					// cluster 
-					get_cluster(data[0].citebank.cluster);
+					get_cluster(data[0].citebank.cluster);*/
+					
+					document.getElementById("debug").innerHTML = JSON.stringify(data, null, 2);
 					
 					
 				});
 		});
-	}
+	}	
 		   
 
 

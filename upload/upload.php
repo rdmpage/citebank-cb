@@ -2,8 +2,8 @@
 
 // Upload a CSL-JSON document to CouchDB
 
-require_once (dirname(__FILE__) . '/utilities.php');
-require_once (dirname(__FILE__) . '/couchsimple.php');
+require_once (dirname(dirname(__FILE__)) . '/utilities.php');
+require_once (dirname(dirname(__FILE__)) . '/couchsimple.php');
 
 //----------------------------------------------------------------------------------------
 // Upload a CSL-JSON document to CouchDB

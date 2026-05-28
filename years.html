@@ -14,7 +14,16 @@
 
 <h1>CiteBank</h1>
 
-<h2><a href=".">Home</a> | Years</h2>
+<h2>
+	<a href=".">Home</a>
+	|
+	<a href="containers.html">Containers</a> 
+	| 
+	<a href="authors.html">Authors</a>
+	| 
+	Years
+</h2>
+
 
 <div id = "years">
 
@@ -33,6 +42,16 @@
 
 
 <script>
+	function escapeHtml(s) {
+		if (s === null || s === undefined) return '';
+		return String(s)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
+	}
+
 	const urlParams = new URLSearchParams(window.location.search);
 
 
@@ -50,13 +69,13 @@
 				}
 						
 				response.json().then(function(data) {
-					var html = "<h2>" + year + "</h2>";
+					var html = "<h2>" + escapeHtml(year) + "</h2>";
 					
 					html += '<div class="multicolumn">';
 					html += '<ul>';
 					
 					for (var i in data) {
-						html += '<li><a href="?year=' + year + '&volume=' + encodeURIComponent(data[i]) + '">' + data[i] + '</li>';
+						html += '<li><a href="?year=' + encodeURIComponent(year) + '&volume=' + encodeURIComponent(data[i]) + '">' + escapeHtml(data[i]) + '</a></li>';
 					}
 					
 					html += '</ul>';
@@ -66,17 +85,29 @@
 				});
 		});
 	}
-
-	var years = [1922];
 	
-	var html = '';
-	html += '<ul style="list-style-type: none;">';
-	for (var i in years) {
-		html += '<li style="float: left;padding:0.3em"><a href="#" onclick="list_volumes(\'' + years[i] + '\')">' + years[i] + '</a></li>';
-	}
-	html += '</ul>';
+	var url = "api.php?dates";
 	
-	document.getElementById("years").innerHTML = html;
+	fetch(url).then(
+		function(response){
+			if (response.status != 200) {
+				console.log("Looks like there was a problem. Status Code: " + response.status);
+				return;
+			}
+					
+			response.json().then(function(data) {
+				//alert(JSON.stringify(data));
+				letters = data;  
+				var html = '';
+				html += '<ul style="list-style-type: none;">';
+				for (var i in letters) {
+					html += '<li style="float: left;padding:0.3em"><a href="#" onclick="list_volumes(\'' + i + '\')">' + i + '</a></li>';
+				}
+				html += '</ul>';
+				document.getElementById("years").innerHTML = html;
+				
+			});
+	});
 	
 	var year = urlParams.get('year');
 	
@@ -97,19 +128,17 @@
 				}
 						
 				response.json().then(function(data) {
-					var html = "<h3>Year: " + year + " Volume: " + volume + "</h3>";					
-					
+					var html = "<h3>Year: " + escapeHtml(year) + " Volume: " + escapeHtml(volume) + "</h3>";
+
 					for (var page in data) {
-						html += '<h4>Page: ' + page + '</h4>';						
+						html += '<h4>Page: ' + escapeHtml(page) + '</h4>';
 
 						html += '<ul style="list-style: none;">';
 						for (var i in data[page]) {
 							var citation = new Cite(data[page][i]);
 							
-							var id = data[page][i]._id;
-							id = id.replace('#', '%23');
 							html += '<li style="padding:0.3em;">';
-							html += '<a href="./?id=' + id + '">';							
+							html += '<a href="./?cluster=' + encodeURIComponent(i) + '">';
 							html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
 							html += '</a>';
 							html += '</li>';

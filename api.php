@@ -548,6 +548,52 @@ function get_volumes_by_year($year)
 }
 
 //--------------------------------------------------------------------------------------------------
+function get_year_list()
+{
+	global $config;
+	global $couch;
+	
+	$result = array();
+	
+	$parameters = array(
+		'reduce' 		=> 'true',
+		'group_level'	=> 2
+	);
+
+	$url = '_design/interface/_view/years?' . http_build_query($parameters);
+	
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+	
+	$response_obj = json_decode($resp);
+	
+	if ($response_obj)
+	{
+		foreach ($response_obj->rows as $row)
+		{
+			$result[$row->key] = $row->value;
+		}
+	}
+	
+	return $result;
+}
+
+//--------------------------------------------------------------------------------------------------
+function display_year_list($callback = '')
+{
+	$status = 404;
+	
+	$result = get_year_list();
+	
+	if (count($result) > 0)
+	{
+		$status = 200;
+	}
+	
+	api_output($result, $callback, $status);
+}
+
+
+//--------------------------------------------------------------------------------------------------
 function get_works_by_volume_by_year($year, $volume)
 {
 	global $config;
@@ -1120,7 +1166,7 @@ function main()
 			if (isset($_GET['year']))
 			{
 				$year = $_GET['year'];
-				
+								
 				if (isset($_GET['volume']))
 				{
 					$volume = $_GET['volume'];
@@ -1136,7 +1182,17 @@ function main()
 			}			
 			
 		}
-	}	
+	}
+	
+	// range of publication dates	
+	if (!$handled)
+	{
+		if (isset($_GET['dates']))
+		{		
+			display_year_list($callback);
+			$handled = true;
+		}							
+	}
 		
 	
 	if (!$handled)

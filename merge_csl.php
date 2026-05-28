@@ -35,6 +35,8 @@ function merge ($objs, $confidence = array())
 {
 	$result = new stdclass;
 	$result->debug = false;
+	
+	$result->members = [];
 
 	$keys = array('author', 'title', 'container-title', 'volume', 'issue', 'page-first', 'page', 
 		'issued','DOI');
@@ -139,7 +141,12 @@ function merge ($objs, $confidence = array())
 					$result->{'is-referenced-by'}[] = $reference->DOI;
 				}
 			}
-		}					
+		}	
+		
+		if (isset($obj->_id))
+		{
+			$result->members[] = $obj->_id;
+		}
 		
 	}
 
