@@ -1,6 +1,51 @@
 <?php
 
+require_once (dirname(dirname(__FILE__)) . '/compare.php');
 require_once (dirname(__FILE__) . '/upload.php');
+
+//----------------------------------------------------------------------------------------
+function doi_to_agency($prefix, $doi)
+{
+	global $prefix_to_agency;
+	
+	$agency = '';
+			
+	if (isset($prefix_to_agency[$prefix]))
+	{
+		$agency = $prefix_to_agency[$prefix];
+	}
+	else
+	{
+		$url = 'https://doi.org/ra/' . $doi;
+	
+		$json = get($url);
+	
+		echo $json;
+	
+		$obj = json_decode($json);
+	
+		if ($obj)
+		{
+			if (isset($obj[0]->RA))
+			{
+				$agency = $obj[0]->RA;
+		
+				$prefix_to_agency[$prefix] = $agency;
+			}
+			else
+			{
+				// Bad DOI
+				if (isset($obj[0]->status))
+				{
+					$agency = $obj[0]->status;
+				}
+			}
+	
+		}
+	}
+	
+	return $agency;
+}
 
 //----------------------------------------------------------------------------------------
 function doi_to_identifier($doi)
@@ -23,6 +68,21 @@ function get_work($doi)
 	if ($json != '')
 	{
 		$doc = json_decode($json);
+		
+		// clean HTML tags, etc.
+		if (isset($doc->title))
+		{
+			if (is_array($doc->title))
+			{
+				$doc->title[0] = clean_text($doc->title[0]);
+			}
+			else
+			{
+				$doc->title = clean_text($doc->title);
+			}
+		}
+		
+		$doc->DOI = strtolower($doc->DOI);	
 		
 		$doc->_id = doi_to_identifier($doi);
 	}
@@ -188,14 +248,33 @@ $dois=[
 "10.3897/rio.3.e20860",
 ];
 
+$dois=['10.1111/j.1365-2311.1922.tb02828.x'];
+
+$dois=['10.5281/zenodo.16173'];
+
 $force = false;
-//$force = true;
+$force = true;
 
 $count = 1;
 
+$source = 'unknown';
+
+$prefix_filename = dirname(__FILE__) . '/prefix.json';
+$json = file_get_contents($prefix_filename);
+$prefix_to_agency = json_decode($json, true);
+
 foreach ($dois as $doi)
 {
+	// get DOI resolving agency
+	$parts = explode('/', $doi);
+	$prefix = $parts[0];
+		
+	$source = doi_to_agency($prefix, $doi);
+	
+	// Full URL version of DOI
 	$identifier = doi_to_identifier($doi);
+	
+	echo $identifier . "\n";
 
 	$go = true;
 
@@ -207,10 +286,12 @@ foreach ($dois as $doi)
 	if ($go)
 	{
 		$doc = get_work($doi);
+		
+		//print_r($doc);
 	
 		if ($doc)
 		{
-			upload($doc, $force);
+			upload($doc, $source, $force);
 		}
 		else
 		{
@@ -232,5 +313,9 @@ foreach ($dois as $doi)
 	}
 
 }
+
+// save prefix file
+file_put_contents($prefix_filename, json_encode($prefix_to_agency));
+
 
 ?>
