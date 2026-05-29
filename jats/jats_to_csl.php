@@ -276,7 +276,7 @@ function jats_to_csl($xml)
 		}
 		 
 		// clean for debugging
-		unset($citation->unstructured);
+		//unset($citation->unstructured);
 		
 		$bibliography[] = $citation;
 	}

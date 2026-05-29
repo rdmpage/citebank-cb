@@ -4,8 +4,8 @@
 <dict>
 	<key>EmbeddedEditorHidden:rpage</key>
 	<false/>
-	<key>ExpandedEditorWidth:rpage:displays([(0, 0), (3440, 1440)])</key>
-	<integer>772</integer>
+	<key>ExpandedEditorWidth:rpage:displays([(0, 0), (1512, 982)])</key>
+	<integer>754</integer>
 	<key>ExpandedItems:rpage</key>
 	<array>
 		<string>2866AA93-28D9-4D4B-AE72-BDC5ED914B70</string>
@@ -463,6 +463,43 @@
 		<dict>
 			<key>BookmarkData</key>
 			<data>
+			Ym9va0gDAAAAAAQQMAAAAHPJ4+3LauYBtLMmQha68YSymylKeymb
+			z2AO8LtFteRzOAIAAAQAAAADAwAAAAgAKAUAAAABAQAAVXNlcnMA
+			AAAFAAAAAQEAAHJwYWdlAAAABQAAAAEBAABTaXRlcwAAAAsAAAAB
+			AQAAY2l0ZWJhbmstY2IABgAAAAEBAAB1cGxvYWQAAAsAAAABAQAA
+			cHJlZml4Lmpzb24AGAAAAAEGAAAQAAAAIAAAADAAAABAAAAAVAAA
+			AGQAAAAIAAAABAMAAIRcAAAAAAAACAAAAAQDAACWxgMAAAAAAAgA
+			AAAEAwAAQOgeAAAAAAAIAAAABAMAALs7XfYAAAAACAAAAAQDAADS
+			zHH2AAAAAAgAAAAEAwAA3ySA9gAAAAAYAAAAAQYAAJgAAACoAAAA
+			uAAAAMgAAADYAAAA6AAAAAgAAAAABAAAQcQz9XjkdhgYAAAAAQIA
+			AAEAAAAAAAAADwAAAAAAAAAAAAAAAAAAAAgAAAAEAwAABAAAAAAA
+			AAAEAAAAAwMAAPUBAAAIAAAAAQkAAGZpbGU6Ly8vDAAAAAEBAABN
+			YWNpbnRvc2ggSEQIAAAABAMAAACQgpbnAAAACAAAAAAEAABBxygm
+			roAAACQAAAABAQAARUVEQkM0OTUtREY1Mi00NTZBLUI0MzEtRkI2
+			MDdCRjA0QUQxGAAAAAECAACBAAAAAQAAAO8TAAABAAAAAAAAAAAA
+			AAABAAAAAQEAAC8AAAAAAAAAAQUAABoAAAABAQAATlNVUkxEb2N1
+			bWVudElkZW50aWZpZXJLZXkAAAQAAAADAwAAw2M1ANgAAAD+////
+			AQAAAAAAAAARAAAABBAAAHgAAAAAAAAABRAAAPgAAAAAAAAAEBAA
+			ACgBAAAAAAAAQBAAABgBAAAAAAAAAiAAAPQBAAAAAAAABSAAAGQB
+			AAAAAAAAECAAAHQBAAAAAAAAESAAAKgBAAAAAAAAEiAAAIgBAAAA
+			AAAAEyAAAJgBAAAAAAAAICAAANQBAAAAAAAAMCAAAAACAAAAAAAA
+			AcAAAEgBAAAAAAAAEcAAACAAAAAAAAAAEsAAAFgBAAAAAAAAENAA
+			AAQAAAAAAAAACAIAgCwCAAAAAAAA
+			</data>
+			<key>FileURL</key>
+			<string>file:///Users/rpage/Sites/citebank-cb/upload/prefix.json</string>
+			<key>HasSecurityScope</key>
+			<true/>
+			<key>RelativePath</key>
+			<string>./upload/prefix.json</string>
+			<key>TypeID</key>
+			<string>_CFileLocator</string>
+			<key>Version</key>
+			<integer>1</integer>
+		</dict>
+		<dict>
+			<key>BookmarkData</key>
+			<data>
 			Ym9va5ADAAAAAAQQMAAAAOzRbznAAudupxNsK0H91yRDUvVArTp/
 			NVdd98A3OH9RdAIAAAQAAAADAwAAAAgAKAUAAAABAQAAVXNlcnMA
 			AAAFAAAAAQEAAHJwYWdlAAAABQAAAAEBAABTaXRlcwAAAAsAAAAB
@@ -499,48 +536,11 @@
 			<key>Version</key>
 			<integer>1</integer>
 		</dict>
-		<dict>
-			<key>BookmarkData</key>
-			<data>
-			Ym9va0gDAAAAAAQQMAAAAHPJ4+3LauYBtLMmQha68YSymylKeymb
-			z2AO8LtFteRzOAIAAAQAAAADAwAAAAgAKAUAAAABAQAAVXNlcnMA
-			AAAFAAAAAQEAAHJwYWdlAAAABQAAAAEBAABTaXRlcwAAAAsAAAAB
-			AQAAY2l0ZWJhbmstY2IABgAAAAEBAAB1cGxvYWQAAAsAAAABAQAA
-			cHJlZml4Lmpzb24AGAAAAAEGAAAQAAAAIAAAADAAAABAAAAAVAAA
-			AGQAAAAIAAAABAMAAIRcAAAAAAAACAAAAAQDAACWxgMAAAAAAAgA
-			AAAEAwAAQOgeAAAAAAAIAAAABAMAALs7XfYAAAAACAAAAAQDAADS
-			zHH2AAAAAAgAAAAEAwAA3ySA9gAAAAAYAAAAAQYAAJgAAACoAAAA
-			uAAAAMgAAADYAAAA6AAAAAgAAAAABAAAQcQz9XjkdhgYAAAAAQIA
-			AAEAAAAAAAAADwAAAAAAAAAAAAAAAAAAAAgAAAAEAwAABAAAAAAA
-			AAAEAAAAAwMAAPUBAAAIAAAAAQkAAGZpbGU6Ly8vDAAAAAEBAABN
-			YWNpbnRvc2ggSEQIAAAABAMAAACQgpbnAAAACAAAAAAEAABBxygm
-			roAAACQAAAABAQAARUVEQkM0OTUtREY1Mi00NTZBLUI0MzEtRkI2
-			MDdCRjA0QUQxGAAAAAECAACBAAAAAQAAAO8TAAABAAAAAAAAAAAA
-			AAABAAAAAQEAAC8AAAAAAAAAAQUAABoAAAABAQAATlNVUkxEb2N1
-			bWVudElkZW50aWZpZXJLZXkAAAQAAAADAwAAw2M1ANgAAAD+////
-			AQAAAAAAAAARAAAABBAAAHgAAAAAAAAABRAAAPgAAAAAAAAAEBAA
-			ACgBAAAAAAAAQBAAABgBAAAAAAAAAiAAAPQBAAAAAAAABSAAAGQB
-			AAAAAAAAECAAAHQBAAAAAAAAESAAAKgBAAAAAAAAEiAAAIgBAAAA
-			AAAAEyAAAJgBAAAAAAAAICAAANQBAAAAAAAAMCAAAAACAAAAAAAA
-			AcAAAEgBAAAAAAAAEcAAACAAAAAAAAAAEsAAAFgBAAAAAAAAENAA
-			AAQAAAAAAAAACAIAgCwCAAAAAAAA
-			</data>
-			<key>FileURL</key>
-			<string>file:///Users/rpage/Sites/citebank-cb/upload/prefix.json</string>
-			<key>HasSecurityScope</key>
-			<true/>
-			<key>RelativePath</key>
-			<string>./upload/prefix.json</string>
-			<key>TypeID</key>
-			<string>_CFileLocator</string>
-			<key>Version</key>
-			<integer>1</integer>
-		</dict>
 	</array>
 	<key>OpenDocumentsExpanded</key>
 	<true/>
 	<key>OpenDocumentsSplitterProportion</key>
-	<real>0.82911392405063289</real>
+	<real>1.0010917030567685</real>
 	<key>ProjectItemsExpanded</key>
 	<true/>
 	<key>ProjectViewVisible</key>
@@ -549,7 +549,7 @@
 	<array>
 		<dict>
 			<key>Date</key>
-			<date>2026-05-28T15:59:23Z</date>
+			<date>2026-05-29T08:00:19Z</date>
 			<key>Location</key>
 			<dict>
 				<key>BookmarkData</key>
@@ -593,7 +593,7 @@
 		</dict>
 		<dict>
 			<key>Date</key>
-			<date>2026-05-28T15:59:23Z</date>
+			<date>2026-05-29T08:00:19Z</date>
 			<key>Location</key>
 			<dict>
 				<key>BookmarkData</key>
@@ -639,7 +639,7 @@
 		</dict>
 		<dict>
 			<key>Date</key>
-			<date>2026-05-28T15:59:23Z</date>
+			<date>2026-05-29T08:00:19Z</date>
 			<key>Location</key>
 			<dict>
 				<key>BookmarkData</key>
@@ -682,7 +682,7 @@
 		</dict>
 		<dict>
 			<key>Date</key>
-			<date>2026-05-28T15:59:23Z</date>
+			<date>2026-05-29T08:00:19Z</date>
 			<key>Location</key>
 			<dict>
 				<key>BookmarkData</key>
@@ -723,7 +723,7 @@
 		</dict>
 		<dict>
 			<key>Date</key>
-			<date>2026-05-28T15:59:23Z</date>
+			<date>2026-05-29T08:00:19Z</date>
 			<key>Location</key>
 			<dict>
 				<key>BookmarkData</key>
@@ -766,7 +766,7 @@
 		</dict>
 		<dict>
 			<key>Date</key>
-			<date>2026-05-28T15:59:23Z</date>
+			<date>2026-05-29T08:00:19Z</date>
 			<key>Location</key>
 			<dict>
 				<key>BookmarkData</key>
@@ -811,7 +811,7 @@
 		</dict>
 		<dict>
 			<key>Date</key>
-			<date>2026-05-28T15:59:23Z</date>
+			<date>2026-05-29T08:00:19Z</date>
 			<key>Location</key>
 			<dict>
 				<key>BookmarkData</key>
@@ -852,7 +852,7 @@
 		</dict>
 		<dict>
 			<key>Date</key>
-			<date>2026-05-28T15:59:23Z</date>
+			<date>2026-05-29T08:00:19Z</date>
 			<key>Location</key>
 			<dict>
 				<key>BookmarkData</key>
@@ -897,7 +897,7 @@
 		</dict>
 		<dict>
 			<key>Date</key>
-			<date>2026-05-28T15:59:23Z</date>
+			<date>2026-05-29T08:00:19Z</date>
 			<key>Location</key>
 			<dict>
 				<key>BookmarkData</key>
@@ -941,7 +941,7 @@
 		</dict>
 		<dict>
 			<key>Date</key>
-			<date>2026-05-28T15:59:23Z</date>
+			<date>2026-05-29T08:00:19Z</date>
 			<key>Location</key>
 			<dict>
 				<key>BookmarkData</key>
@@ -987,7 +987,7 @@
 		</dict>
 		<dict>
 			<key>Date</key>
-			<date>2026-05-28T15:59:23Z</date>
+			<date>2026-05-29T08:00:19Z</date>
 			<key>Location</key>
 			<dict>
 				<key>BookmarkData</key>
@@ -1033,7 +1033,7 @@
 		</dict>
 		<dict>
 			<key>Date</key>
-			<date>2026-05-28T15:59:23Z</date>
+			<date>2026-05-29T08:00:19Z</date>
 			<key>Location</key>
 			<dict>
 				<key>BookmarkData</key>
@@ -1079,7 +1079,7 @@
 		</dict>
 		<dict>
 			<key>Date</key>
-			<date>2026-05-28T15:59:23Z</date>
+			<date>2026-05-29T08:00:19Z</date>
 			<key>Location</key>
 			<dict>
 				<key>BookmarkData</key>
@@ -1120,7 +1120,7 @@
 		</dict>
 		<dict>
 			<key>Date</key>
-			<date>2026-05-28T15:59:23Z</date>
+			<date>2026-05-29T08:00:19Z</date>
 			<key>Location</key>
 			<dict>
 				<key>BookmarkData</key>
@@ -1163,7 +1163,7 @@
 		</dict>
 		<dict>
 			<key>Date</key>
-			<date>2026-05-28T15:59:23Z</date>
+			<date>2026-05-29T08:00:19Z</date>
 			<key>Location</key>
 			<dict>
 				<key>BookmarkData</key>
@@ -1215,8 +1215,8 @@
 	<key>ToolbarVisible:rpage</key>
 	<false/>
 	<key>ViewSplitterPosition:rpage</key>
-	<real>0.20820513367652893</real>
-	<key>WindowFrame:rpage:displays([(0, 0), (3440, 1440)])</key>
-	<string>rect(231,679,1337,1654)</string>
+	<real>0.21212121844291687</real>
+	<key>WindowFrame:rpage:displays([(0, 0), (1512, 982)])</key>
+	<string>rect(66,288,982,1245)</string>
 </dict>
 </plist>
