@@ -60,59 +60,91 @@ if ($dom)
 	}
 	
 	// Literature cited
+	$references = [];
+	
+	$citation_reference_count = 0;
+	
+	$citation_references = $dom->find('meta[name=citation_reference]');
+	
+	if ($citation_references)
+	{
+		$citation_reference_count =  count($citation_references);
+	}	
+	
 	foreach ($dom->find('meta') as $meta)
 	{		
 		switch ($meta->name)
 		{				
 			case 'citation_reference':
-				$text = $meta->content;
+				// this could be one reference, it could be multiple scrunched into one tag 
+				// e.g Zootaxa
 				
-				//echo $text . "\n";
-	
-				$url = 'http://localhost/citation-parsing/api.php?text=' . urlencode($text);
-			
-				$json = get($url);
-			
-				//echo $json;
-			
-				$doc = json_decode($json);
-				
-				if (isset($doc[0]))
+				if ($citation_reference_count == 1)
 				{
-					$csl = $doc[0];
+					// either just one reference, or more likely, a block of them					
+					$h = html_entity_decode($meta->content);
 					
-					$csl->id = $identifier . '#row=' . $reference_counter;
-					
-					if ($identifier != '')
+					$d = HtmlDomParser::str_get_html($h);
+					if ($d)
 					{
-						$citing_work = new stdclass;
-						
-						// add link to parent work (e.g., article corresponding to this HTML page)
-						if (preg_match('/(https?:\/\/(dx.)?doi.org\/)?(?<doi>10\.\d+.*)/', $identifier, $m))
-						{				
-							$citing_work->DOI = strtolower($m['doi']);
-						}
-						elseif (preg_match('/^(http|urn)/', $identifier))
+						// Zootaxa
+						foreach ($d->find('p[class=HeadingRunIn]') as $p)
 						{
-							$citing_work->URL = $identifier;
+							$references[] = $p->plaintext;
 						}
-						
-						if (isset($citing_work->DOI) || isset($citing_work->URL))
-						{						
-							$csl->{'is-referenced-by'} = [$citing_work];
-						}
-					}
-					
-					echo json_encode($csl, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) . "\n";
+					}				
+				}
+				else
+				{
+					$references[] = $meta->content;
 				}	
-				
-				$reference_counter++;			
 				break;
 				
 			default:
 				break;
 		}
 	}
+	
+	// process references we have extracted
+	foreach ($references as $index => $text)
+	{
+		$url = 'http://localhost/citation-parsing/api.php?text=' . urlencode($text);
+	
+		$json = get($url);
+	
+		//echo $json;
+	
+		$doc = json_decode($json);
+		
+		if (isset($doc[0]))
+		{
+			$csl = $doc[0];
+			
+			$csl->id = $identifier . '#row=' . $index;
+			
+			if ($identifier != '')
+			{
+				$citing_work = new stdclass;
+				
+				// add link to parent work (e.g., article corresponding to this HTML page)
+				if (preg_match('/(https?:\/\/(dx.)?doi.org\/)?(?<doi>10\.\d+.*)/', $identifier, $m))
+				{				
+					$citing_work->DOI = strtolower($m['doi']);
+				}
+				elseif (preg_match('/^(http|urn)/', $identifier))
+				{
+					$citing_work->URL = $identifier;
+				}
+				
+				if (isset($citing_work->DOI) || isset($citing_work->URL))
+				{						
+					$csl->{'is-referenced-by'} = [$citing_work];
+				}
+			}
+			
+			echo json_encode($csl, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) . "\n";
+		}	
+	}	
 
 }
 
