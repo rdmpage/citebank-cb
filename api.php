@@ -131,26 +131,27 @@ function get_containers_first_letters()
 	global $couch;
 	
 	$result = array();
-	
+
+	// Clustered container docs, grouped by (folded) first letter.
 	$parameters = array(
 		'reduce' 		=> 'true',
-		'group_level' 	=> 2,
+		'group_level' 	=> 1,
 	);
 
-	$url = '_design/interface/_view/container-letter-list?' . http_build_query($parameters);
-	
+	$url = '_design/container/_view/container-list?' . http_build_query($parameters);
+
 	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
-	
+
 	$response_obj = json_decode($resp);
-	
-	if ($response_obj)
+
+	if ($response_obj && isset($response_obj->rows))
 	{
 		foreach ($response_obj->rows as $row)
 		{
-			$result[$row->key] = $row->value;
+			$result[$row->key[0]] = $row->value;
 		}
 	}
-	
+
 	return $result;
 }
 
@@ -164,28 +165,33 @@ function get_containers_by_letter($letter)
 	
 	$startkey = array($letter);
 	$endkey = array($letter, new stdclass);
-	
+
+	// List the clustered container docs under this letter: id (for ?cid=),
+	// canonical name, and variant count.
 	$parameters = array(
-		'startkey' 		=> json_encode($startkey),
-		'endkey'		=> json_encode($endkey),
-		'reduce' 		=> 'true',
-		'group_level' 	=> 2,
+		'startkey' 		=> json_encode($startkey, JSON_UNESCAPED_UNICODE),
+		'endkey'		=> json_encode($endkey, JSON_UNESCAPED_UNICODE),
+		'reduce' 		=> 'false',
 	);
 
-	$url = '_design/interface/_view/container-letter?' . http_build_query($parameters);
-	
+	$url = '_design/container/_view/container-list?' . http_build_query($parameters);
+
 	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
-	
+
 	$response_obj = json_decode($resp);
-	
-	if ($response_obj)
+
+	if ($response_obj && isset($response_obj->rows))
 	{
 		foreach ($response_obj->rows as $row)
 		{
-			$result[] = $row->key[1];
+			$entry = new stdclass;
+			$entry->id    = $row->id;
+			$entry->name  = $row->key[1];
+			$entry->count = $row->value;
+			$result[] = $entry;
 		}
 	}
-	
+
 	return $result;
 }
 
@@ -332,6 +338,117 @@ function get_works_by_container($container)
 				$envelope->cluster_size = $counts[$year][$cluster];
 				$result[$year][$cluster] = $envelope;
 			}
+		}
+	}
+
+	return $result;
+}
+
+//--------------------------------------------------------------------------------------------------
+// Reverse lookup: which container cluster (if any) lists this exact raw spelling?
+// Uses the _design/container "variant" view (raw string -> container _id).
+function get_container_for_variant($variant)
+{
+	global $config;
+	global $couch;
+
+	$result = null;
+
+	$parameters = array(
+		'key'    => json_encode($variant, JSON_UNESCAPED_UNICODE),
+		'reduce' => 'false',
+	);
+	$url = '_design/container/_view/variant?' . http_build_query($parameters);
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+	$obj = json_decode($resp);
+
+	if ($obj && isset($obj->rows) && count($obj->rows) > 0)
+	{
+		$cid = $obj->rows[0]->value;
+		$doc = json_decode($couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . urlencode($cid)));
+
+		$result = new stdclass;
+		$result->id   = $cid;
+		$result->name = isset($doc->name) ? $doc->name : $cid;
+		$result->junk = isset($doc->junk) ? $doc->junk : false;
+	}
+
+	return $result;
+}
+
+//--------------------------------------------------------------------------------------------------
+// Pull works across every variant spelling of a single canonical container.
+// Returns the same {year → {cluster_id → {csl, cluster_size}}} envelope as
+// get_works_by_container; cluster_size is the true count across all variants.
+function get_works_by_container_id($cid)
+{
+	global $config;
+	global $couch;
+
+	// Fetch the container doc to read its variants list.
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . urlencode($cid));
+	$container = json_decode($resp);
+	if (!$container || !isset($container->variants) || !is_array($container->variants))
+	{
+		return array();
+	}
+
+	$result      = array();
+	$counts      = array();
+	$kept_is_rep = array();
+
+	foreach ($container->variants as $variant)
+	{
+		$startkey = array($variant, 0);
+		$endkey   = array($variant, 2030, new stdclass);
+
+		$parameters = array(
+			'startkey'     => json_encode($startkey, JSON_UNESCAPED_UNICODE),
+			'endkey'       => json_encode($endkey, JSON_UNESCAPED_UNICODE),
+			'reduce'       => 'false',
+			'include_docs' => 'true',
+		);
+
+		$url = '_design/interface/_view/container-year-page?' . http_build_query($parameters);
+		$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+		$response_obj = json_decode($resp);
+
+		if (!$response_obj || !isset($response_obj->rows))
+		{
+			continue;
+		}
+
+		foreach ($response_obj->rows as $row)
+		{
+			$year    = $row->key[1];
+			$cluster = $row->doc->citebank->cluster;
+			$is_rep  = ($row->doc->_id === $cluster);
+
+			if (!isset($result[$year]))
+			{
+				$result[$year]      = array();
+				$counts[$year]      = array();
+				$kept_is_rep[$year] = array();
+			}
+
+			$counts[$year][$cluster] = ($counts[$year][$cluster] ?? 0) + 1;
+
+			if (!isset($result[$year][$cluster]) || ($is_rep && !$kept_is_rep[$year][$cluster]))
+			{
+				$result[$year][$cluster]      = simplify_csl($row->doc);
+				$kept_is_rep[$year][$cluster] = $is_rep;
+			}
+		}
+	}
+
+	foreach ($result as $year => $clusters)
+	{
+		foreach ($clusters as $cluster => $csl)
+		{
+			$envelope = new stdclass;
+			$envelope->csl          = $csl;
+			$envelope->cluster_size = $counts[$year][$cluster];
+			$result[$year][$cluster] = $envelope;
 		}
 	}
 
@@ -499,17 +616,47 @@ function display_containers_by_letter($letter, $callback = '')
 }
 
 //--------------------------------------------------------------------------------------------------
-function display_works_by_container($container, $callback = '')
+function display_works_by_container_id($cid, $callback = '')
 {
 	$status = 404;
-	
-	$result = get_works_by_container($container);
-	
+
+	$result = get_works_by_container_id($cid);
+
 	if (count($result) > 0)
 	{
 		$status = 200;
 	}
-	
+
+	api_output($result, $callback, $status);
+}
+
+//--------------------------------------------------------------------------------------------------
+function display_container_for_variant($variant, $callback = '')
+{
+	$status = 404;
+
+	$result = get_container_for_variant($variant);
+
+	if ($result)
+	{
+		$status = 200;
+	}
+
+	api_output($result, $callback, $status);
+}
+
+//--------------------------------------------------------------------------------------------------
+function display_works_by_container($container, $callback = '')
+{
+	$status = 404;
+
+	$result = get_works_by_container($container);
+
+	if (count($result) > 0)
+	{
+		$status = 200;
+	}
+
 	api_output($result, $callback, $status);
 }
 
@@ -858,7 +1005,6 @@ function display_consensus_for_records ($ids, $callback = '')
 	if (count($records) > 0)
 	{
 		$obj = merge($records, []);
-		
 	}
 		
 	api_output($obj, $callback, 200);
@@ -977,6 +1123,100 @@ function display_cluster ($id, $callback = '')
 	display_consensus_for_records($members, $callback);
 }
 
+//--------------------------------------------------------------------------------------------------
+function display_search($query, $limit = 20, $callback)
+{
+	global $config;
+	global $couch;
+
+	$status = 404;
+	$result = array();
+
+	$query = trim($query);
+	$query = preg_replace('/\s\s+/', ' ', $query);
+
+	if ($query === '')
+	{
+		api_output($result, $callback, $status);
+		return;
+	}
+
+	$query_parts = explode(' ', $query);
+
+	foreach ($query_parts as &$part)
+	{
+		$part = 'title:' . $part; // consider adding "~" suffix for fuzzy matching
+	}
+	unset($part);
+
+	$q = join(' AND ', $query_parts);
+
+	$url  = '_design/search/_nouveau/full-text?q=' . rawurlencode($q);
+	$url .= '&limit=' . $limit;
+	$url .= '&include_docs=true';
+
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+	$resp_obj = json_decode($resp);
+
+	$clusters  = array();
+	$reps_seen = array();
+
+	foreach ($resp_obj->hits as $hit)
+	{
+		$cluster_id = $hit->doc->citebank->cluster;
+
+		// Nouveau wraps each order element as { "@type": "...", "value": N };
+		// older builds returned a bare number — handle both.
+		$score = 0.0;
+		if (isset($hit->order[0]))
+		{
+			$first = $hit->order[0];
+			$score = is_object($first) ? (float)$first->value : (float)$first;
+		}
+
+		$is_rep = ($hit->doc->_id === $cluster_id);
+
+		if (!isset($clusters[$cluster_id]))
+		{
+			$item = new stdclass;
+			$item->cluster_id   = $cluster_id;
+			$item->csl          = simplify_csl($hit->doc);
+			$item->score        = $score;
+			$item->cluster_size = 1;
+
+			$clusters[$cluster_id]  = $item;
+			$reps_seen[$cluster_id] = $is_rep;
+		}
+		else
+		{
+			$item = $clusters[$cluster_id];
+			$item->cluster_size++;
+			if ($score > $item->score)
+			{
+				$item->score = $score;
+			}
+			// prefer the cluster representative if we encounter it
+			if ($is_rep && !$reps_seen[$cluster_id])
+			{
+				$item->csl              = simplify_csl($hit->doc);
+				$reps_seen[$cluster_id] = true;
+			}
+		}
+	}
+
+	$result = array_values($clusters);
+	usort($result, function($a, $b) {
+		return $b->score <=> $a->score;
+	});
+
+	if (count($result) > 0)
+	{
+		$status = 200;
+	}
+
+	api_output($result, $callback, $status);
+}
+
 
 //--------------------------------------------------------------------------------------------------
 function main()
@@ -1005,6 +1245,12 @@ function main()
 	{
 		$debug = true;
 	}	
+	
+	$limit = 20;
+	if (isset($_GET['limit']))
+	{
+		$limit = $_GET['limit'];
+	}
 	
 	// Submit job
 	
@@ -1194,11 +1440,25 @@ function main()
 				$title = $_GET['title'];
 				display_works_by_container($title, $callback);
 				$handled = true;
-			}	
-			
+			}
+
+			if (isset($_GET['cid']))
+			{
+				$cid = $_GET['cid'];
+				display_works_by_container_id($cid, $callback);
+				$handled = true;
+			}
+
+			if (isset($_GET['variant']))
+			{
+				$variant = $_GET['variant'];
+				display_container_for_variant($variant, $callback);
+				$handled = true;
+			}
+
 		}
-	}	
-	
+	}
+
 	// authors
 	if (!$handled)
 	{
@@ -1264,6 +1524,17 @@ function main()
 		}							
 	}
 		
+		
+	// simple search	
+	if (!$handled)
+	{
+		if (isset($_GET['q']))
+		{		
+			$query = $_GET['q'];
+			display_search($query, $limit, $callback);
+			$handled = true;
+		}							
+	}
 	
 	if (!$handled)
 	{

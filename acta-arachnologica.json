@@ -1,0 +1,24 @@
+{
+  "_id": "container:acta-arachnologica",
+  "citebank": {
+    "type": "container"
+  },
+  "curated": true,
+  "name": "Acta Arachnologica",
+  "ISSN": ["0001-5202", "1880-7852"],
+  "variants": [
+    "Acta Arachnologica",
+    "Acta Arachnologia (Tokyo)",
+    "Acta arachnologica",
+    "Acta arachnologica (Tokyo)",
+    "Acta Arachnologica (Tokyo)",
+    "Acta arachnologica Tokyo",
+    "Acta Arachnologica, Osaka",
+    "Acta arachnologica, Tokyo",
+    "Acta Arachnologica.(Tokyo)",
+    "Acta Arachnology",
+    "Acta arachnology Tokyo",
+    "Acta aracnológica",
+    "Acta Archnologica"
+  ]
+}

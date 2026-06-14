@@ -1,2 +1,6 @@
 env.php
 .DS_Store
+/junk/
+
+# Large CouchDB dump that feeds the clustering pipeline (regenerable via get_view.php)
+/container.tsv

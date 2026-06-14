@@ -208,6 +208,11 @@ The feature vector is the concatenation of all field pairs, e.g. `[1,0,1,0,0,0,0
 
 ## Container Titles
 
+> **Status:** now implemented as a full clustering pipeline. See
+> [`CONTAINER_CLUSTERING.md`](CONTAINER_CLUSTERING.md) for current state, and
+> [`clustering/README.md`](clustering/README.md) for the algorithm. The shipped
+> docs use `name` (not `canonical`) and add `variants`, `junk`, and `cluster_run`.
+
 Journal/container-title normalisation is handled as a lightweight lookup layer, not a full clustering system. A `container` document maps variant spellings and ISSNs to a canonical form:
 
 ```json

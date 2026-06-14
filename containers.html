@@ -86,14 +86,17 @@
 					
 					html += '<div class="multicolumn">';
 					html += '<ul>';
-					
+
 					for (var i in data) {
-						html += '<li><a href="?title=' + encodeURIComponent(data[i]) + '">' + escapeHtml(data[i]) + '</a></li>';
+						var c = data[i];
+						html += '<li><a href="?cid=' + encodeURIComponent(c.id) + '">' + escapeHtml(c.name) + '</a>';
+						if (c.count > 1) { html += ' <span style="color:#999;">(' + c.count + ')</span>'; }
+						html += '</li>';
 					}
-					
+
 					html += '</ul>';
 					html += '</div>';
-					
+
 					document.getElementById("containers").innerHTML = html;
 				});
 		});
@@ -122,46 +125,93 @@
 			});
 	});
 	
+	function render_works(heading, metaHtml, data) {
+		var html = "<h3>" + heading + "</h3>";
+		if (metaHtml) html += metaHtml;
+
+		for (var year in data) {
+			html += '<h4>' + year + '</h4>';
+			html += '<ul style="list-style: none;">';
+			for (var i in data[year]) {
+				var entry = data[year][i];
+				var citation = new Cite(entry.csl);
+
+				html += '<li style="padding:0.3em;">';
+				html += '<a href="./?cluster=' + encodeURIComponent(i) + '" style="display:inline;">';
+				html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
+				html += '</a>';
+				if (entry.cluster_size > 1) {
+					html += ' <strong>(' + entry.cluster_size + ' records)</strong>';
+				}
+				html += '</li>';
+			}
+			html += '</ul>';
+		}
+
+		document.getElementById("works").innerHTML = html;
+	}
+
 	var title = urlParams.get('title');
-	
-	if (title) {
-		var url = "api.php?container&title=" + encodeURIComponent(title)
-		
-		fetch(url).then(
-			function(response){
+	var cid   = urlParams.get('cid');
+
+	if (cid) {
+		// Fetch container doc for display name, then fetch combined works.
+		fetch("api.php?id=" + encodeURIComponent(cid)).then(function(response) {
+			return response.status === 200 ? response.json() : null;
+		}).then(function(meta) {
+			var container = (meta && meta[0]) || {};
+			var heading = container.name ? escapeHtml(container.name) : escapeHtml(cid);
+
+			var metaHtml = '';
+			if (Array.isArray(container.variants) && container.variants.length > 0) {
+				metaHtml += '<details style="margin:0.5em 0;">';
+				metaHtml += '<summary>' + container.variants.length + ' variant spellings</summary>';
+				metaHtml += '<ul style="font-size:0.9em;color:#555;">';
+				for (var v of container.variants) {
+					metaHtml += '<li><a href="?title=' + encodeURIComponent(v) + '">' + escapeHtml(v) + '</a></li>';
+				}
+				metaHtml += '</ul></details>';
+			}
+
+			fetch("api.php?container&cid=" + encodeURIComponent(cid)).then(function(response) {
 				if (response.status != 200) {
-					console.log("Looks like there was a problem. Status Code: " + response.status);
+					document.getElementById("works").innerHTML = "<h3>" + heading + "</h3>" + metaHtml + "<p>No works found.</p>";
 					return;
 				}
-						
 				response.json().then(function(data) {
-					var html = "<h3>" + escapeHtml(title) + "</h3>";
-					
-					for (var year in data) {
-						html += '<h4>' + year + '</h4>';
-
-						html += '<ul style="list-style: none;">';
-						for (var i in data[year]) {
-							var entry = data[year][i];
-							var citation = new Cite(entry.csl);
-
-							html += '<li style="padding:0.3em;">';
-							html += '<a href="./?cluster=' + encodeURIComponent(i) + '" style="display:inline;">';
-							html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
-							html += '</a>';
-							if (entry.cluster_size > 1) {
-								html += ' <strong>(' + entry.cluster_size + ' records)</strong>';
-							}
-							html += '</li>';
-						}
-						html += '</ul>';
-
-					}
-
-					document.getElementById("works").innerHTML = html;
+					render_works(heading, metaHtml, data);
 				});
+			});
 		});
-		
+
+	} else if (title) {
+		// First resolve which container cluster (if any) lists this exact spelling,
+		// so we can offer a link from one variant up to the whole cluster.
+		fetch("api.php?container&variant=" + encodeURIComponent(title)).then(function(response) {
+			return response.status === 200 ? response.json() : null;
+		}).then(function(container) {
+			var metaHtml = '';
+			if (container && container.id) {
+				metaHtml = '<p>Part of cluster: <a href="?cid=' + encodeURIComponent(container.id) + '">'
+					+ escapeHtml(container.name) + '</a>';
+				if (container.junk) { metaHtml += ' <em style="color:#c0392b;">(flagged junk)</em>'; }
+				metaHtml += '</p>';
+			} else {
+				metaHtml = '<p style="color:#999;">Not part of any container cluster.</p>';
+			}
+
+			fetch("api.php?container&title=" + encodeURIComponent(title)).then(function(response) {
+				if (response.status != 200) {
+					document.getElementById("works").innerHTML =
+						"<h3>" + escapeHtml(title) + "</h3>" + metaHtml + "<p>No works found.</p>";
+					return;
+				}
+				response.json().then(function(data) {
+					render_works(escapeHtml(title), metaHtml, data);
+				});
+			});
+		});
+
 	} else {
 		list_containers('A');
 	}

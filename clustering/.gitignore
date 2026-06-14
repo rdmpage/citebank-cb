@@ -1,0 +1,8 @@
+# Generated clustering artifacts — regenerable, large; keep out of git.
+containers.db
+containers.db-shm
+containers.db-wal
+clusters.tsv
+clusters_multi.tsv
+clusters_multi.html
+container_docs.json
