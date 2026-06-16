@@ -25,6 +25,29 @@
 			margin-left:1em;
 			*/
 		}
+
+		/* Per-year page-coverage ruler: full extent of pages seen that year,
+		   with a block per article. Gaps = pages we have no article for. */
+		.coverage {
+			position: relative;
+			height: 14px;
+			margin: 0.2em 0 0.5em;
+			background: #eef0f2;
+			border: 1px solid #d8dee6;
+			border-radius: 3px;
+		}
+		.coverage .seg {
+			position: absolute;
+			top: 0;
+			bottom: 0;
+			min-width: 1px;
+			background: rgba(10, 102, 194, 0.5);
+		}
+		.coverage-caption {
+			font-size: 0.75em;
+			color: #6b7480;
+			margin: 0 0 0.6em;
+		}
 	</style>
 	
 	<script src="js/citation.js" type="text/javascript"></script>
@@ -125,27 +148,133 @@
 			});
 	});
 	
+	// Parse a CSL "page" string into [first, last] page numbers, or null.
+	// Handles "123-145", en/em dashes, single pages, and abbreviated ends
+	// ("123-45" -> 123-145; "1234-7" -> 1234-1237).
+	function parsePages(page) {
+		if (page === null || page === undefined) return null;
+		var s = String(page);
+		var m = s.match(/(\d+)\s*[-‐-―]\s*(\d+)/);
+		if (m) {
+			var a = parseInt(m[1], 10);
+			var b = parseInt(m[2], 10);
+			if (b < a) {
+				var as = String(a), bs = String(b);
+				if (bs.length < as.length) {
+					b = parseInt(as.substring(0, as.length - bs.length) + bs, 10);
+				}
+			}
+			if (b < a) b = a;
+			return [a, b];
+		}
+		m = s.match(/(\d+)/);
+		if (m) { var p = parseInt(m[1], 10); return [p, p]; }
+		return null;
+	}
+
+	// Convert a pure Roman numeral (e.g. "XLI") to an int; 0 if not Roman.
+	function romanToInt(s) {
+		s = String(s).toUpperCase().trim();
+		if (!/^[IVXLCDM]+$/.test(s)) return 0;
+		var map = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
+		var total = 0, prev = 0;
+		for (var i = s.length - 1; i >= 0; i--) {
+			var v = map[s.charAt(i)];
+			if (v < prev) { total -= v; } else { total += v; prev = v; }
+		}
+		return total;
+	}
+
+	// Numeric volume for sorting: leading digits, then Roman numerals; else last.
+	function volNumber(csl) {
+		if (!csl || csl.volume === null || csl.volume === undefined) return Infinity;
+		var s = String(csl.volume);
+		var m = s.match(/\d+/);
+		if (m) return parseInt(m[0], 10);
+		var rom = romanToInt(s);
+		return rom > 0 ? rom : Infinity;
+	}
+
+	// First page number for sorting; missing sorts last.
+	function firstPage(csl) {
+		var r = parsePages(csl ? csl.page : null);
+		return r ? r[0] : Infinity;
+	}
+
+	// Build a coverage ruler for one year's articles. ranges: array of [first,last].
+	function coverageBar(ranges) {
+		if (ranges.length === 0) return '';
+		var lo = Infinity, hi = -Infinity;
+		for (var i = 0; i < ranges.length; i++) {
+			if (ranges[i][0] < lo) lo = ranges[i][0];
+			if (ranges[i][1] > hi) hi = ranges[i][1];
+		}
+		var span = hi - lo;
+		if (span <= 0) span = 1;
+
+		var html = '<div class="coverage" title="pp. ' + lo + '–' + hi + '">';
+		for (var j = 0; j < ranges.length; j++) {
+			var left = (ranges[j][0] - lo) / span * 100;
+			var width = (ranges[j][1] - ranges[j][0]) / span * 100;
+			html += '<span class="seg" style="left:' + left.toFixed(2) + '%;width:' + width.toFixed(2)
+				+ '%;" title="pp. ' + ranges[j][0] + '–' + ranges[j][1] + '"></span>';
+		}
+		html += '</div>';
+		html += '<div class="coverage-caption">pp. ' + lo + '–' + hi + ' · '
+			+ ranges.length + ' article' + (ranges.length === 1 ? '' : 's') + ' with page ranges</div>';
+		return html;
+	}
+
 	function render_works(heading, metaHtml, data) {
 		var html = "<h3>" + heading + "</h3>";
 		if (metaHtml) html += metaHtml;
 
 		for (var year in data) {
 			html += '<h4>' + year + '</h4>';
-			html += '<ul style="list-style: none;">';
-			for (var i in data[year]) {
-				var entry = data[year][i];
-				var citation = new Cite(entry.csl);
 
-				html += '<li style="padding:0.3em;">';
-				html += '<a href="./?cluster=' + encodeURIComponent(i) + '" style="display:inline;">';
-				html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
-				html += '</a>';
-				if (entry.cluster_size > 1) {
-					html += ' <strong>(' + entry.cluster_size + ' records)</strong>';
-				}
-				html += '</li>';
+			// Group this year's articles by (normalised) volume. Pagination resets
+			// per volume, so each volume gets its own ruler and page-ordered list.
+			var byVol = {};
+			for (var k in data[year]) {
+				var vkey = volNumber(data[year][k].csl);
+				(byVol[vkey] = byVol[vkey] || []).push({ id: k, e: data[year][k] });
 			}
-			html += '</ul>';
+			var volKeys = Object.keys(byVol).map(function(x) {
+				return x === 'Infinity' ? Infinity : Number(x);
+			}).sort(function(a, b) { return a - b; });
+
+			for (var vi = 0; vi < volKeys.length; vi++) {
+				var group = byVol[volKeys[vi]];
+				group.sort(function(a, b) { return firstPage(a.e.csl) - firstPage(b.e.csl); });
+
+				html += '<h5 style="margin:0.5em 0 0.2em;color:#444;">'
+					+ (volKeys[vi] === Infinity ? '(no volume)' : 'Volume ' + volKeys[vi]) + '</h5>';
+
+				// Coverage ruler from this volume's page ranges.
+				var ranges = [];
+				for (var n = 0; n < group.length; n++) {
+					var r = parsePages(group[n].e.csl ? group[n].e.csl.page : null);
+					if (r) ranges.push(r);
+				}
+				html += coverageBar(ranges);
+
+				html += '<ul style="list-style: none;">';
+				for (var j = 0; j < group.length; j++) {
+					var i = group[j].id;
+					var entry = group[j].e;
+					var citation = new Cite(entry.csl);
+
+					html += '<li style="padding:0.3em;">';
+					html += '<a href="./?cluster=' + encodeURIComponent(i) + '" style="display:inline;">';
+					html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
+					html += '</a>';
+					if (entry.cluster_size > 1) {
+						html += ' <strong>(' + entry.cluster_size + ' records)</strong>';
+					}
+					html += '</li>';
+				}
+				html += '</ul>';
+			}
 		}
 
 		document.getElementById("works").innerHTML = html;
