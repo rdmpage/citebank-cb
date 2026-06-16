@@ -1,0 +1,277 @@
+<html>
+<head>
+	<meta charset="UTF-8">
+	<link rel="stylesheet" href="css/main.css">
+	<style>
+		.coverage { position: relative; height: 16px; margin: 0.2em 0 0.3em;
+			background: #eef0f2; border: 1px solid #d8dee6; border-radius: 3px; }
+		.coverage .seg { position: absolute; top: 0; bottom: 0; min-width: 1px; }
+		/* Colourblind-safe: blue = in BioStor, orange = gap (not red/green). */
+		.seg.in  { background: rgba(31, 119, 180, 0.65); }  /* in BioStor (blue) */
+		.seg.gap { background: rgba(255, 140, 0, 0.85); }   /* not in BioStor (orange) */
+		.seg.unk { background: rgba(140, 140, 140, 0.40); } /* not checked (grey) */
+		.coverage-caption { font-size: 0.75em; color: #6b7480; margin: 0 0 0.7em; }
+		.legend span { font-size: 0.8em; margin-right: 1em; }
+		.swatch { display:inline-block; width:0.8em; height:0.8em; border-radius:2px; vertical-align:middle; margin-right:0.3em; }
+		/* The thing that matters most: not-in-BioStor articles get a tinted row. */
+		li.gap { background: #fff3e0; border-left: 3px solid #ff8c00; }
+		li.unk { background: #f4f4f4; border-left: 3px solid #cccccc; }
+		.badge { font-size: 0.8em; margin-left: 0.4em; }
+		.badge.in a { color: #1f5fa8; }
+		.badge.gap { color: #9a4a00; font-weight: 600; }
+		.addbio { font-size: 0.8em; margin-left: 0.4em; color: #9a4a00; font-weight: 600; }
+	</style>
+	<script src="js/citation.js" type="text/javascript"></script>
+	<script>const Cite = require('citation-js')</script>
+</head>
+<body>
+
+<h1>CiteBank — BioStor coverage <small style="font-size:0.5em;color:#999;">(dev)</small></h1>
+<h2><a href=".">Home</a> | <a href="containers.html">Containers</a></h2>
+
+<div id="info"></div>
+<div class="legend">
+	<span><span class="swatch" style="background:rgba(31,119,180,0.65)"></span>in BioStor</span>
+	<span><span class="swatch" style="background:rgba(255,140,0,0.85)"></span>gap (not in BioStor)</span>
+	<span><span class="swatch" style="background:rgba(140,140,140,0.40)"></span>not checked</span>
+</div>
+<div id="works"></div>
+
+<script>
+	function escapeHtml(s) {
+		if (s === null || s === undefined) return '';
+		return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+			.replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+	}
+	const urlParams = new URLSearchParams(window.location.search);
+
+	function parsePages(page) {
+		if (page === null || page === undefined) return null;
+		var s = String(page);
+		var m = s.match(/(\d+)\s*[-‐-―]\s*(\d+)/);
+		if (m) {
+			var a = parseInt(m[1], 10), b = parseInt(m[2], 10);
+			if (b < a) {
+				var as = String(a), bs = String(b);
+				if (bs.length < as.length) b = parseInt(as.substring(0, as.length - bs.length) + bs, 10);
+			}
+			if (b < a) b = a;
+			return [a, b];
+		}
+		m = s.match(/(\d+)/);
+		if (m) { var p = parseInt(m[1], 10); return [p, p]; }
+		return null;
+	}
+	function romanToInt(s) {
+		s = String(s).toUpperCase().trim();
+		if (!/^[IVXLCDM]+$/.test(s)) return 0;
+		var map = { I:1, V:5, X:10, L:50, C:100, D:500, M:1000 }, total = 0, prev = 0;
+		for (var i = s.length - 1; i >= 0; i--) { var v = map[s.charAt(i)]; if (v < prev) total -= v; else { total += v; prev = v; } }
+		return total;
+	}
+	function volNumber(csl) {
+		if (!csl || csl.volume === null || csl.volume === undefined) return Infinity;
+		var s = String(csl.volume), m = s.match(/\d+/);
+		if (m) return parseInt(m[0], 10);
+		var r = romanToInt(s); return r > 0 ? r : Infinity;
+	}
+	function firstPage(csl) { var r = parsePages(csl ? csl.page : null); return r ? r[0] : Infinity; }
+
+	// Local BioStor OpenURL resolver — used to add a missing article quickly.
+	var LOCAL_BIOSTOR = 'http://localhost/biostor-classic/www/openurl';
+
+	// Convert a CSL object to an OpenURL query string (copied from index.html).
+	function cslToOpenURL(csl) {
+		const parameters = {};
+		const cslOpenURLMap = {
+			type: 'TY', title: 'TI', author: 'rft.au', 'container-title': 'JO',
+			ISSN: 'rft.issn', 'collection-title': 'rft.series', volume: 'rft.volume',
+			issue: 'rft.issue', spage: 'rft.spage', epage: 'rft.epage', issued: 'rft.date',
+			URL: 'rft_id', DOI: 'rft_id'
+		};
+		function add(key, value) {
+			if (value === undefined || value === null || value === '') return;
+			if (!parameters[key]) parameters[key] = [];
+			parameters[key].push(value);
+		}
+		add('ctx_ver', 'Z39.88-2004');
+		for (const [key, value] of Object.entries(csl)) {
+			switch (key) {
+				case 'type':
+					switch (value) {
+						case 'article-journal':
+						case 'journal-article':
+							add('rft_val_fmt', 'info:ofi/fmt:kev:mtx:journal');
+							add('genre', 'article');
+							if (csl.title) add('rft.atitle', csl.title);
+							if (csl['container-title']) add('rft.jtitle', csl['container-title']);
+							break;
+						case 'book':
+						case 'chapter':
+						default:
+							add('genre', value);
+							if (csl.title) add('rft.title', csl.title);
+							break;
+					}
+					break;
+				case 'collection-title':
+				case 'volume':
+				case 'issue':
+				case 'URL':
+					add(cslOpenURLMap[key], value);
+					break;
+				case 'DOI':
+					add(cslOpenURLMap[key], 'info:doi/' + value);
+					break;
+				case 'page': {
+					const match = String(value).match(/(.*)-(.*)/);
+					if (match) { add('rft.spage', match[1]); add('rft.epage', match[2]); }
+					else add('rft.spage', value);
+					break;
+				}
+				case 'issued':
+					if (value['date-parts'] && value['date-parts'][0] && value['date-parts'][0][0]) {
+						add(cslOpenURLMap[key], value['date-parts'][0][0]);
+					}
+					break;
+				case 'author':
+					for (const author of value) {
+						if (author.literal) { add(cslOpenURLMap[key], author.literal); }
+						else {
+							const nameParts = [];
+							if (author.given) nameParts.push(author.given);
+							if (author.family) nameParts.push(author.family);
+							const name = nameParts.join(' ').trim();
+							if (name !== '') add(cslOpenURLMap[key], name);
+						}
+					}
+					break;
+				default: break;
+			}
+		}
+		const kv = [];
+		for (const [key, values] of Object.entries(parameters)) {
+			for (const value of values) kv.push(key + '=' + encodeURIComponent(value));
+		}
+		return kv.join('&');
+	}
+
+	// OpenURL "add to BioStor" link from a work's CSL (journal article assumed if untyped).
+	function addToBioStorLink(csl) {
+		var c = Object.assign({}, csl);
+		if (Array.isArray(c['container-title'])) c['container-title'] = c['container-title'][0];
+		if (!c.type) c.type = 'article-journal';
+		return LOCAL_BIOSTOR + '?' + cslToOpenURL(c);
+	}
+
+	// items: [{lo, hi, status}]  status in {in, gap, unk}
+	function coverageBar(items) {
+		if (items.length === 0) return '';
+		var lo = Infinity, hi = -Infinity, nIn = 0, nChecked = 0;
+		for (var i = 0; i < items.length; i++) {
+			if (items[i].lo < lo) lo = items[i].lo;
+			if (items[i].hi > hi) hi = items[i].hi;
+			if (items[i].status !== 'unk') nChecked++;
+			if (items[i].status === 'in') nIn++;
+		}
+		var base = Math.min(1, lo), span = hi - base;
+		if (span <= 0) span = 1;
+		var html = '<div class="coverage" title="pp. ' + base + '–' + hi + '">';
+		for (var j = 0; j < items.length; j++) {
+			var left = (items[j].lo - base) / span * 100;
+			var width = (items[j].hi - items[j].lo) / span * 100;
+			html += '<span class="seg ' + items[j].status + '" style="left:' + left.toFixed(2)
+				+ '%;width:' + width.toFixed(2) + '%;"></span>';
+		}
+		html += '</div>';
+		html += '<div class="coverage-caption">pp. ' + lo + '–' + hi + ' &middot; '
+			+ nIn + '/' + nChecked + ' in BioStor</div>';
+		return html;
+	}
+
+	function badge(match) {
+		if (match && match.matched) {
+			return '<span class="badge in">[<a href="https://biostor.org/reference/'
+				+ encodeURIComponent(match.biostor_id) + '" target="_blank">BioStor ' + escapeHtml(match.biostor_id) + '</a>]</span>';
+		}
+		if (match) return '<span class="badge gap">[not in BioStor]</span>';
+		return '<span class="badge" style="color:#999;">[not checked]</span>';
+	}
+
+	function statusOf(match) { return match ? (match.matched ? 'in' : 'gap') : 'unk'; }
+
+	function render(name, works, matchData) {
+		var matches = matchData.matches || {};
+		var totIn = 0, totChecked = 0;
+		var html = '';
+
+		for (var year in works) {
+			html += '<h4>' + year + '</h4>';
+			var byVol = {};
+			for (var k in works[year]) {
+				var vkey = volNumber(works[year][k].csl);
+				(byVol[vkey] = byVol[vkey] || []).push({ id: k, e: works[year][k] });
+			}
+			var volKeys = Object.keys(byVol).map(function(x){ return x === 'Infinity' ? Infinity : Number(x); })
+				.sort(function(a, b){ return a - b; });
+
+			for (var vi = 0; vi < volKeys.length; vi++) {
+				var group = byVol[volKeys[vi]];
+				group.sort(function(a, b){ return firstPage(a.e.csl) - firstPage(b.e.csl); });
+
+				html += '<h5 style="margin:0.5em 0 0.2em;color:#444;">'
+					+ (volKeys[vi] === Infinity ? '(no volume)' : 'Volume ' + volKeys[vi]) + '</h5>';
+
+				var items = [];
+				for (var n = 0; n < group.length; n++) {
+					var r = parsePages(group[n].e.csl ? group[n].e.csl.page : null);
+					if (r) items.push({ lo: r[0], hi: r[1], status: statusOf(matches[group[n].id]) });
+				}
+				html += coverageBar(items);
+
+				html += '<ul style="list-style: none;">';
+				for (var j = 0; j < group.length; j++) {
+					var i = group[j].id, entry = group[j].e, match = matches[i];
+					if (match && match.matched) totIn++;
+					if (match) totChecked++;
+					var citation = new Cite(entry.csl);
+					html += '<li class="' + statusOf(match) + '" style="padding:0.3em;">';
+					html += citation.format('bibliography', { format: 'html', template: 'apa', lang: 'en' });
+					html += badge(match);
+					if (!match || !match.matched) {
+						html += ' <a class="addbio" href="' + addToBioStorLink(entry.csl)
+							+ '" target="_blank">add to BioStor &#8599;</a>';
+					}
+					html += '</li>';
+				}
+				html += '</ul>';
+			}
+		}
+
+		var pct = totChecked ? Math.round(100 * totIn / totChecked) : 0;
+		var checked = matchData.checked ? (' &middot; checked ' + escapeHtml(matchData.checked.substring(0, 10))) : '';
+		document.getElementById('info').innerHTML =
+			'<h3>' + escapeHtml(name) + '</h3>'
+			+ '<p><strong>' + totIn + ' / ' + totChecked + ' (' + pct + '%) in BioStor</strong>' + checked
+			+ ' &middot; <a href="containers.html?cid=' + encodeURIComponent(urlParams.get('cid')) + '">normal view</a></p>';
+		document.getElementById('works').innerHTML = html;
+	}
+
+	var cid = urlParams.get('cid');
+	if (!cid) {
+		document.getElementById('info').innerHTML = '<p>Provide a ?cid=container:&lt;slug&gt;</p>';
+	} else {
+		Promise.all([
+			fetch('api.php?id=' + encodeURIComponent(cid)).then(function(r){ return r.ok ? r.json() : null; }),
+			fetch('api.php?container&cid=' + encodeURIComponent(cid)).then(function(r){ return r.ok ? r.json() : {}; }),
+			fetch('biostor.php?cid=' + encodeURIComponent(cid)).then(function(r){ return r.ok ? r.json() : { matches: {} }; })
+		]).then(function(res) {
+			var meta = res[0], works = res[1], matchData = res[2];
+			var name = (meta && meta[0] && meta[0].name) ? meta[0].name : cid;
+			render(name, works, matchData);
+		});
+	}
+</script>
+
+</body>
+</html>

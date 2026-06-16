@@ -297,6 +297,10 @@
 	var cid   = urlParams.get('cid');
 
 	if (cid) {
+		// Resolve the dev flag first, so dev-only links (BioStor coverage) only
+		// appear on a development instance.
+		fetch("api.php?env").then(function(r){ return r.ok ? r.json() : { dev: false }; })
+			.catch(function(){ return { dev: false }; }).then(function(env) {
 		// Fetch container doc for display name, then fetch combined works.
 		fetch("api.php?id=" + encodeURIComponent(cid)).then(function(response) {
 			return response.status === 200 ? response.json() : null;
@@ -305,6 +309,10 @@
 			var heading = container.name ? escapeHtml(container.name) : escapeHtml(cid);
 
 			var metaHtml = exportLinks("api.php?container&cid=" + encodeURIComponent(cid));
+			if (env.dev) {
+				metaHtml += '<p style="font-size:0.85em;"><a href="biostor.html?cid='
+					+ encodeURIComponent(cid) + '">&#9638; BioStor coverage</a></p>';
+			}
 			if (Array.isArray(container.variants) && container.variants.length > 0) {
 				metaHtml += '<details style="margin:0.5em 0;">';
 				metaHtml += '<summary>' + container.variants.length + ' variant spellings</summary>';
@@ -324,6 +332,7 @@
 					render_works(heading, metaHtml, data);
 				});
 			});
+		});
 		});
 
 	} else if (title) {

@@ -66,5 +66,13 @@ if ($config['platform'] == 'cloud')
 }
 
 $config['stale'] = false;
-	
+
+// Development instance? Gates dev-only UI (e.g. the BioStor coverage view) so it
+// never appears in the public release. env.php may override; otherwise defaults
+// from the platform.
+if (!isset($config['dev']))
+{
+	$config['dev'] = ($config['platform'] == 'local');
+}
+
 ?>

@@ -1459,8 +1459,17 @@ function main()
 	// export formats (ris/bibtex/csl) trigger a file download instead of JSON.
 	$format = isset($_GET['format']) ? $_GET['format'] : '';
 
+	// Environment probe: lets the (static) UI gate dev-only features.
+	if (!$handled && isset($_GET['env']))
+	{
+		$env = new stdclass;
+		$env->dev = !empty($config['dev']);
+		api_output($env, $callback, 200);
+		$handled = true;
+	}
+
 	// Submit job
-	
+
 	// get one record from doc id
 	if (!$handled)
 	{

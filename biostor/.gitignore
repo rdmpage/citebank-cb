@@ -1,0 +1,4 @@
+# Exploration artifacts — regenerable, not part of the public release.
+*.db
+*.db-shm
+*.db-wal
