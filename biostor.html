@@ -200,6 +200,19 @@
 
 	function statusOf(match) { return match ? (match.matched ? 'in' : 'gap') : 'unk'; }
 
+	// Trigger an on-demand reconcile of this container (dev only), then reload.
+	function checkNow(cid) {
+		var btn = document.getElementById('checkbtn');
+		if (btn) { btn.disabled = true; btn.textContent = 'Checking BioStor… (may take a moment)'; }
+		fetch('biostor.php?cid=' + encodeURIComponent(cid) + '&check=1', { method: 'POST' })
+			.then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+			.then(function () { location.reload(); })
+			.catch(function (e) {
+				if (btn) { btn.disabled = false; btn.textContent = 'Check now (failed — retry)'; }
+				alert('BioStor check failed: ' + e.message);
+			});
+	}
+
 	function render(name, works, matchData) {
 		var matches = matchData.matches || {};
 		var totIn = 0, totChecked = 0;
@@ -238,7 +251,9 @@
 					html += '<li class="' + statusOf(match) + '" style="padding:0.3em;">';
 					html += citation.format('bibliography', { format: 'html', template: 'apa', lang: 'en' });
 					html += badge(match);
-					if (!match || !match.matched) {
+					// Only offer "add" when we checked BioStor and did NOT find it
+					// (not for unchecked articles — we don't know they're missing).
+					if (match && !match.matched) {
 						html += ' <a class="addbio" href="' + addToBioStorLink(entry.csl)
 							+ '" target="_blank">add to BioStor &#8599;</a>';
 					}
@@ -248,12 +263,22 @@
 			}
 		}
 
-		var pct = totChecked ? Math.round(100 * totIn / totChecked) : 0;
-		var checked = matchData.checked ? (' &middot; checked ' + escapeHtml(matchData.checked.substring(0, 10))) : '';
-		document.getElementById('info').innerHTML =
-			'<h3>' + escapeHtml(name) + '</h3>'
-			+ '<p><strong>' + totIn + ' / ' + totChecked + ' (' + pct + '%) in BioStor</strong>' + checked
-			+ ' &middot; <a href="containers.html?cid=' + encodeURIComponent(urlParams.get('cid')) + '">normal view</a></p>';
+		var cidParam = urlParams.get('cid');
+		var info = '<h3>' + escapeHtml(name) + '</h3>';
+		if (totChecked === 0) {
+			info += '<p style="background:#fff3e0;border-left:3px solid #ff8c00;padding:0.5em 0.7em;">'
+				+ 'Not yet checked against BioStor. <button id="checkbtn">Check now</button><br>'
+				+ '<small>or run <code>php biostor/reconcile.php --cid ' + escapeHtml(cidParam) + '</code></small></p>';
+		} else {
+			var pct = Math.round(100 * totIn / totChecked);
+			var checked = matchData.checked ? (' &middot; checked ' + escapeHtml(matchData.checked.substring(0, 10))) : '';
+			info += '<p><strong>' + totIn + ' / ' + totChecked + ' (' + pct + '%) in BioStor</strong>' + checked
+				+ ' <button id="checkbtn">Re-check</button></p>';
+		}
+		info += '<p><a href="containers.html?cid=' + encodeURIComponent(cidParam) + '">normal view</a></p>';
+		document.getElementById('info').innerHTML = info;
+		var cb = document.getElementById('checkbtn');
+		if (cb) cb.onclick = function () { checkNow(cidParam); };
 		document.getElementById('works').innerHTML = html;
 	}
 
