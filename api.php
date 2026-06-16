@@ -1219,6 +1219,209 @@ function display_search($query, $limit = 20, $callback)
 
 
 //--------------------------------------------------------------------------------------------------
+// Export helpers: flatten a {year => {cluster => {csl,...}}} works envelope and
+// convert the CSL-JSON records to RIS / BibTeX / CSL-JSON for download.
+
+function flatten_works($envelope)
+{
+	$list = array();
+	foreach ($envelope as $year => $clusters)
+	{
+		foreach ($clusters as $cid => $entry)
+		{
+			if (isset($entry->csl))
+			{
+				$list[] = $entry->csl;
+			}
+		}
+	}
+	return $list;
+}
+
+function csl_year($csl)
+{
+	if (isset($csl->issued->{'date-parts'}[0][0]))
+	{
+		return (int)$csl->issued->{'date-parts'}[0][0];
+	}
+	if (isset($csl->issued) && is_string($csl->issued) && preg_match('/\d{4}/', $csl->issued, $m))
+	{
+		return (int)$m[0];
+	}
+	return null;
+}
+
+// [start, end] page strings ('' when absent).
+function csl_pages($csl)
+{
+	if (!isset($csl->page))
+	{
+		return array('', '');
+	}
+	$p = (string)$csl->page;
+	if (preg_match('/(\w+)\s*[-\x{2010}-\x{2015}]\s*(\w+)/u', $p, $m))
+	{
+		return array($m[1], $m[2]);
+	}
+	return array(trim($p), '');
+}
+
+function csl_authors($csl)
+{
+	$out = array();
+	if (isset($csl->author) && is_array($csl->author))
+	{
+		foreach ($csl->author as $a)
+		{
+			if (isset($a->family))
+			{
+				$out[] = isset($a->given) ? ($a->family . ', ' . $a->given) : $a->family;
+			}
+			else if (isset($a->literal))
+			{
+				$out[] = $a->literal;
+			}
+		}
+	}
+	return $out;
+}
+
+function csl_container($csl)
+{
+	if (!isset($csl->{'container-title'}))
+	{
+		return '';
+	}
+	$ct = $csl->{'container-title'};
+	return is_array($ct) ? (isset($ct[0]) ? $ct[0] : '') : (string)$ct;
+}
+
+function csl_issns($csl)
+{
+	if (!isset($csl->ISSN))
+	{
+		return array();
+	}
+	return is_array($csl->ISSN) ? $csl->ISSN : array($csl->ISSN);
+}
+
+function one_line($s)
+{
+	return trim(preg_replace('/\s+/u', ' ', (string)$s));
+}
+
+function compare_csl_for_export($a, $b)
+{
+	$ya = csl_year($a); $yb = csl_year($b);
+	$ya = ($ya === null) ? 999999 : $ya;
+	$yb = ($yb === null) ? 999999 : $yb;
+	if ($ya !== $yb) return $ya - $yb;
+
+	$va = (int)preg_replace('/\D/', '', isset($a->volume) ? (string)$a->volume : '');
+	$vb = (int)preg_replace('/\D/', '', isset($b->volume) ? (string)$b->volume : '');
+	if ($va !== $vb) return $va - $vb;
+
+	list($pa) = csl_pages($a);
+	list($pb) = csl_pages($b);
+	return ((int)$pa) - ((int)$pb);
+}
+
+function csl_to_ris($csl)
+{
+	$map = array('article-journal' => 'JOUR', 'article' => 'JOUR', 'book' => 'BOOK',
+		'chapter' => 'CHAP', 'paper-conference' => 'CPAPER', 'thesis' => 'THES', 'report' => 'RPRT');
+	$container = csl_container($csl);
+	$type = isset($csl->type) && isset($map[$csl->type]) ? $map[$csl->type] : ($container !== '' ? 'JOUR' : 'GEN');
+
+	$L = array();
+	$L[] = "TY  - $type";
+	foreach (csl_authors($csl) as $au) { $L[] = "AU  - $au"; }
+	$y = csl_year($csl); if ($y) { $L[] = "PY  - $y"; }
+	if (isset($csl->title)) { $L[] = "TI  - " . one_line($csl->title); }
+	if ($container !== '') { $L[] = "JO  - " . one_line($container); }
+	if (isset($csl->volume)) { $L[] = "VL  - " . one_line($csl->volume); }
+	if (isset($csl->issue)) { $L[] = "IS  - " . one_line($csl->issue); }
+	list($sp, $ep) = csl_pages($csl);
+	if ($sp !== '') { $L[] = "SP  - $sp"; }
+	if ($ep !== '') { $L[] = "EP  - $ep"; }
+	if (isset($csl->DOI)) { $L[] = "DO  - " . $csl->DOI; }
+	foreach (csl_issns($csl) as $sn) { $L[] = "SN  - $sn"; }
+	$L[] = "ER  - ";
+	return implode("\r\n", $L) . "\r\n\r\n";
+}
+
+function csl_to_bibtex($csl)
+{
+	$map = array('article-journal' => 'article', 'article' => 'article', 'book' => 'book',
+		'chapter' => 'incollection', 'paper-conference' => 'inproceedings', 'thesis' => 'phdthesis', 'report' => 'techreport');
+	$container = csl_container($csl);
+	$type = isset($csl->type) && isset($map[$csl->type]) ? $map[$csl->type] : ($container !== '' ? 'article' : 'misc');
+
+	$key = isset($csl->_id) ? preg_replace('/[^A-Za-z0-9]/', '', $csl->_id) : '';
+	if ($key === '') { $key = 'ref' . substr(md5(json_encode($csl)), 0, 8); }
+
+	$esc = function ($s) { return str_replace(array('{', '}'), array('\{', '\}'), one_line($s)); };
+
+	$fields = array();
+	$au = csl_authors($csl);
+	if ($au) { $fields['author'] = implode(' and ', $au); }
+	if (isset($csl->title)) { $fields['title'] = $csl->title; }
+	if ($container !== '') { $fields['journal'] = $container; }
+	if (isset($csl->volume)) { $fields['volume'] = $csl->volume; }
+	if (isset($csl->issue)) { $fields['number'] = $csl->issue; }
+	list($sp, $ep) = csl_pages($csl);
+	if ($sp !== '') { $fields['pages'] = ($ep !== '') ? "$sp--$ep" : $sp; }
+	$y = csl_year($csl); if ($y) { $fields['year'] = $y; }
+	if (isset($csl->DOI)) { $fields['doi'] = $csl->DOI; }
+	$iss = csl_issns($csl); if ($iss) { $fields['issn'] = implode(', ', $iss); }
+
+	$parts = array();
+	foreach ($fields as $k => $v) { $parts[] = "  $k = {" . $esc($v) . "}"; }
+	return "@$type{" . $key . ",\n" . implode(",\n", $parts) . "\n}\n";
+}
+
+function is_export_format($format)
+{
+	return in_array(strtolower($format), array('ris', 'bibtex', 'bib', 'csl'));
+}
+
+function safe_filename($s)
+{
+	$s = trim(preg_replace('/[^A-Za-z0-9._-]+/', '-', (string)$s), '-');
+	return $s === '' ? 'export' : $s;
+}
+
+function export_works($envelope, $format, $basename)
+{
+	$list = flatten_works($envelope);
+	usort($list, 'compare_csl_for_export');
+	$base = safe_filename($basename);
+
+	switch (strtolower($format))
+	{
+		case 'ris':
+			$out = '';
+			foreach ($list as $csl) { $out .= csl_to_ris($csl); }
+			api_output_download($out, 'application/x-research-info-systems', "$base.ris");
+			break;
+
+		case 'bib':
+		case 'bibtex':
+			$out = '';
+			foreach ($list as $csl) { $out .= csl_to_bibtex($csl) . "\n"; }
+			api_output_download($out, 'application/x-bibtex', "$base.bib");
+			break;
+
+		case 'csl':
+		default:
+			api_output_download(
+				json_encode($list, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+				'application/json', "$base.json");
+			break;
+	}
+}
+
+//--------------------------------------------------------------------------------------------------
 function main()
 {
 	global $config;
@@ -1251,7 +1454,11 @@ function main()
 	{
 		$limit = $_GET['limit'];
 	}
-	
+
+	// Optional output format. For the work-list selectors (cid/title/family) the
+	// export formats (ris/bibtex/csl) trigger a file download instead of JSON.
+	$format = isset($_GET['format']) ? $_GET['format'] : '';
+
 	// Submit job
 	
 	// get one record from doc id
@@ -1438,14 +1645,28 @@ function main()
 			if (isset($_GET['title']))
 			{
 				$title = $_GET['title'];
-				display_works_by_container($title, $callback);
+				if (is_export_format($format))
+				{
+					export_works(get_works_by_container($title), $format, $title);
+				}
+				else
+				{
+					display_works_by_container($title, $callback);
+				}
 				$handled = true;
 			}
 
 			if (isset($_GET['cid']))
 			{
 				$cid = $_GET['cid'];
-				display_works_by_container_id($cid, $callback);
+				if (is_export_format($format))
+				{
+					export_works(get_works_by_container_id($cid), $format, preg_replace('/^container:/', '', $cid));
+				}
+				else
+				{
+					display_works_by_container_id($cid, $callback);
+				}
 				$handled = true;
 			}
 
@@ -1481,7 +1702,14 @@ function main()
 			if (isset($_GET['family']))
 			{
 				$family = $_GET['family'];
-				display_works_by_family($family, $callback);				
+				if (is_export_format($format))
+				{
+					export_works(get_works_by_family($family), $format, $family);
+				}
+				else
+				{
+					display_works_by_family($family, $callback);
+				}
 				$handled = true;
 			}
 			

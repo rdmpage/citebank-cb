@@ -79,9 +79,20 @@ function api_get($url, $format='application/json')
 }
 
 //----------------------------------------------------------------------------------------
+// Emit a text payload as a file download (used by the RIS/BibTeX/CSL exporters).
+function api_output_download($text, $content_type, $filename)
+{
+	header("Content-Type: $content_type; charset=utf-8");
+	header('Content-Disposition: attachment; filename="' . $filename . '"');
+	header('Cache-control: max-age=3600');
+	echo $text;
+	exit();
+}
+
+//----------------------------------------------------------------------------------------
 function api_output($obj, $callback = '', $status = 400)
 {
-	
+
 	// $obj may be array (e.g., for citeproc)
 	if (is_array($obj))
 	{

@@ -93,6 +93,16 @@
 
 	const urlParams = new URLSearchParams(window.location.search);
 
+	// Download links for the current list (RIS / BibTeX / CSL-JSON). base is an
+	// api.php works URL (e.g. "api.php?container&cid=..."); &format= triggers a
+	// file download server-side.
+	function exportLinks(base) {
+		return '<p class="export" style="font-size:0.85em;color:#444;">Export: '
+			+ '<a href="' + base + '&format=ris">RIS</a> &middot; '
+			+ '<a href="' + base + '&format=bibtex">BibTeX</a> &middot; '
+			+ '<a href="' + base + '&format=csl">CSL-JSON</a></p>';
+	}
+
 	function list_containers(letter) {
 
 		var url = "api.php?container&letter=" + letter;
@@ -209,12 +219,15 @@
 			if (ranges[i][0] < lo) lo = ranges[i][0];
 			if (ranges[i][1] > hi) hi = ranges[i][1];
 		}
-		var span = hi - lo;
+		// Assume the volume starts at page 1, so a gap before the first article
+		// we have is visible at the left of the bar.
+		var base = Math.min(1, lo);
+		var span = hi - base;
 		if (span <= 0) span = 1;
 
-		var html = '<div class="coverage" title="pp. ' + lo + '–' + hi + '">';
+		var html = '<div class="coverage" title="pp. ' + base + '–' + hi + '">';
 		for (var j = 0; j < ranges.length; j++) {
-			var left = (ranges[j][0] - lo) / span * 100;
+			var left = (ranges[j][0] - base) / span * 100;
 			var width = (ranges[j][1] - ranges[j][0]) / span * 100;
 			html += '<span class="seg" style="left:' + left.toFixed(2) + '%;width:' + width.toFixed(2)
 				+ '%;" title="pp. ' + ranges[j][0] + '–' + ranges[j][1] + '"></span>';
@@ -291,7 +304,7 @@
 			var container = (meta && meta[0]) || {};
 			var heading = container.name ? escapeHtml(container.name) : escapeHtml(cid);
 
-			var metaHtml = '';
+			var metaHtml = exportLinks("api.php?container&cid=" + encodeURIComponent(cid));
 			if (Array.isArray(container.variants) && container.variants.length > 0) {
 				metaHtml += '<details style="margin:0.5em 0;">';
 				metaHtml += '<summary>' + container.variants.length + ' variant spellings</summary>';
@@ -328,6 +341,7 @@
 			} else {
 				metaHtml = '<p style="color:#999;">Not part of any container cluster.</p>';
 			}
+			metaHtml += exportLinks("api.php?container&title=" + encodeURIComponent(title));
 
 			fetch("api.php?container&title=" + encodeURIComponent(title)).then(function(response) {
 				if (response.status != 200) {

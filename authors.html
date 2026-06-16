@@ -58,6 +58,14 @@ Good examples include
 
 	const urlParams = new URLSearchParams(window.location.search);
 
+	// Download links for the current list (RIS / BibTeX / CSL-JSON).
+	function exportLinks(base) {
+		return '<p class="export" style="font-size:0.85em;color:#444;">Export: '
+			+ '<a href="' + base + '&format=ris">RIS</a> &middot; '
+			+ '<a href="' + base + '&format=bibtex">BibTeX</a> &middot; '
+			+ '<a href="' + base + '&format=csl">CSL-JSON</a></p>';
+	}
+
 
 	function list_authors(letter) {
 		document.getElementById("authors").innerHTML = "";
@@ -89,7 +97,7 @@ Good examples include
 		});
 	}
 
-	var url = "api.php?container&first";
+	var url = "api.php?author&first";
 	
 	fetch(url).then(
 		function(response){
@@ -126,7 +134,8 @@ Good examples include
 						
 				response.json().then(function(data) {
 					var html = "<h3>" + escapeHtml(family) + "</h3>";
-					
+					html += exportLinks("api.php?author&family=" + encodeURIComponent(family));
+
 					for (var year in data) {
 						html += '<h4>' + year + '</h4>';						
 
