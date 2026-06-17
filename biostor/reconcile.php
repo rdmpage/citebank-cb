@@ -32,7 +32,8 @@ $opts = array(
 );
 
 fwrite(STDERR, "reconciling $cid ...\n");
-$stats = bio_run_reconcile($couch, $dbn, $cid, $store, $opts, function ($done, $total, $m, $u) {
+$clusters = bio_gather_clusters($couch, $dbn, $cid);
+$stats = bio_run_reconcile($clusters, $store, $cid, $opts, function ($done, $total, $m, $u) {
 	fwrite(STDERR, sprintf("  %d/%d  (matched=%d unmatched=%d)\n", $done, $total, $m, $u));
 });
 

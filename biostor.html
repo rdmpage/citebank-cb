@@ -200,11 +200,11 @@
 
 	function statusOf(match) { return match ? (match.matched ? 'in' : 'gap') : 'unk'; }
 
-	// Trigger an on-demand reconcile of this container (dev only), then reload.
-	function checkNow(cid) {
+	// Trigger an on-demand reconcile of this scope (dev only), then reload.
+	function checkNow() {
 		var btn = document.getElementById('checkbtn');
 		if (btn) { btn.disabled = true; btn.textContent = 'Checking BioStor… (may take a moment)'; }
-		fetch('biostor.php?cid=' + encodeURIComponent(cid) + '&check=1', { method: 'POST' })
+		fetch('biostor.php?check=1&' + SCOPE.checkQS, { method: 'POST' })
 			.then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
 			.then(function () { location.reload(); })
 			.catch(function (e) {
@@ -213,88 +213,151 @@
 			});
 	}
 
+	function ctitle(csl) {
+		var c = csl ? csl['container-title'] : '';
+		if (Array.isArray(c)) c = c[0];
+		return (c || '').toString();
+	}
+
+	// One article <li>: coloured by status, with badge and (for confirmed gaps)
+	// an "add to BioStor" OpenURL link.
+	function renderEntry(e, match) {
+		var citation = new Cite(e.csl);
+		var s = '<li class="' + statusOf(match) + '" style="padding:0.3em;">';
+		s += citation.format('bibliography', { format: 'html', template: 'apa', lang: 'en' });
+		s += badge(match);
+		if (match && !match.matched) {
+			s += ' <a class="addbio" href="' + addToBioStorLink(e.csl)
+				+ '" target="_blank">add to BioStor &#8599;</a>';
+		}
+		s += '</li>';
+		return s;
+	}
+
 	function render(name, works, matchData) {
 		var matches = matchData.matches || {};
 		var totIn = 0, totChecked = 0;
 		var html = '';
+		var isAuthor = (SCOPE.kind === 'author');
 
 		for (var year in works) {
 			html += '<h4>' + year + '</h4>';
-			var byVol = {};
-			for (var k in works[year]) {
-				var vkey = volNumber(works[year][k].csl);
-				(byVol[vkey] = byVol[vkey] || []).push({ id: k, e: works[year][k] });
-			}
-			var volKeys = Object.keys(byVol).map(function(x){ return x === 'Infinity' ? Infinity : Number(x); })
-				.sort(function(a, b){ return a - b; });
 
-			for (var vi = 0; vi < volKeys.length; vi++) {
-				var group = byVol[volKeys[vi]];
-				group.sort(function(a, b){ return firstPage(a.e.csl) - firstPage(b.e.csl); });
-
-				html += '<h5 style="margin:0.5em 0 0.2em;color:#444;">'
-					+ (volKeys[vi] === Infinity ? '(no volume)' : 'Volume ' + volKeys[vi]) + '</h5>';
-
-				var items = [];
-				for (var n = 0; n < group.length; n++) {
-					var r = parsePages(group[n].e.csl ? group[n].e.csl.page : null);
-					if (r) items.push({ lo: r[0], hi: r[1], status: statusOf(matches[group[n].id]) });
-				}
-				html += coverageBar(items);
-
+			if (isAuthor) {
+				// An author's articles span many journals, so there's no shared page
+				// scale — list them (no volume grouping, no coverage rulers).
+				var entries = [];
+				for (var k in works[year]) entries.push({ id: k, e: works[year][k] });
+				entries.sort(function(a, b) {
+					var ca = ctitle(a.e.csl).toLowerCase(), cb = ctitle(b.e.csl).toLowerCase();
+					if (ca !== cb) return ca < cb ? -1 : 1;
+					return firstPage(a.e.csl) - firstPage(b.e.csl);
+				});
 				html += '<ul style="list-style: none;">';
-				for (var j = 0; j < group.length; j++) {
-					var i = group[j].id, entry = group[j].e, match = matches[i];
-					if (match && match.matched) totIn++;
-					if (match) totChecked++;
-					var citation = new Cite(entry.csl);
-					html += '<li class="' + statusOf(match) + '" style="padding:0.3em;">';
-					html += citation.format('bibliography', { format: 'html', template: 'apa', lang: 'en' });
-					html += badge(match);
-					// Only offer "add" when we checked BioStor and did NOT find it
-					// (not for unchecked articles — we don't know they're missing).
-					if (match && !match.matched) {
-						html += ' <a class="addbio" href="' + addToBioStorLink(entry.csl)
-							+ '" target="_blank">add to BioStor &#8599;</a>';
-					}
-					html += '</li>';
+				for (var j = 0; j < entries.length; j++) {
+					var m = matches[entries[j].id];
+					if (m) totChecked++;
+					if (m && m.matched) totIn++;
+					html += renderEntry(entries[j].e, m);
 				}
 				html += '</ul>';
+			} else {
+				// Container: group by volume and draw a per-volume coverage ruler.
+				var byVol = {};
+				for (var k in works[year]) {
+					var vkey = volNumber(works[year][k].csl);
+					(byVol[vkey] = byVol[vkey] || []).push({ id: k, e: works[year][k] });
+				}
+				var volKeys = Object.keys(byVol).map(function(x){ return x === 'Infinity' ? Infinity : Number(x); })
+					.sort(function(a, b){ return a - b; });
+
+				for (var vi = 0; vi < volKeys.length; vi++) {
+					var group = byVol[volKeys[vi]];
+					group.sort(function(a, b){ return firstPage(a.e.csl) - firstPage(b.e.csl); });
+
+					html += '<h5 style="margin:0.5em 0 0.2em;color:#444;">'
+						+ (volKeys[vi] === Infinity ? '(no volume)' : 'Volume ' + volKeys[vi]) + '</h5>';
+
+					var items = [];
+					for (var n = 0; n < group.length; n++) {
+						var r = parsePages(group[n].e.csl ? group[n].e.csl.page : null);
+						if (r) items.push({ lo: r[0], hi: r[1], status: statusOf(matches[group[n].id]) });
+					}
+					html += coverageBar(items);
+
+					html += '<ul style="list-style: none;">';
+					for (var j = 0; j < group.length; j++) {
+						var m = matches[group[j].id];
+						if (m) totChecked++;
+						if (m && m.matched) totIn++;
+						html += renderEntry(group[j].e, m);
+					}
+					html += '</ul>';
+				}
 			}
 		}
 
-		var cidParam = urlParams.get('cid');
 		var info = '<h3>' + escapeHtml(name) + '</h3>';
 		if (totChecked === 0) {
 			info += '<p style="background:#fff3e0;border-left:3px solid #ff8c00;padding:0.5em 0.7em;">'
-				+ 'Not yet checked against BioStor. <button id="checkbtn">Check now</button><br>'
-				+ '<small>or run <code>php biostor/reconcile.php --cid ' + escapeHtml(cidParam) + '</code></small></p>';
+				+ 'Not yet checked against BioStor. <button id="checkbtn">Check now</button>'
+				+ (SCOPE.cli ? '<br><small>or run <code>' + escapeHtml(SCOPE.cli) + '</code></small>' : '')
+				+ '</p>';
 		} else {
 			var pct = Math.round(100 * totIn / totChecked);
 			var checked = matchData.checked ? (' &middot; checked ' + escapeHtml(matchData.checked.substring(0, 10))) : '';
 			info += '<p><strong>' + totIn + ' / ' + totChecked + ' (' + pct + '%) in BioStor</strong>' + checked
 				+ ' <button id="checkbtn">Re-check</button></p>';
 		}
-		info += '<p><a href="containers.html?cid=' + encodeURIComponent(cidParam) + '">normal view</a></p>';
+		info += '<p><a href="' + SCOPE.normal + '">normal view</a></p>';
 		document.getElementById('info').innerHTML = info;
 		var cb = document.getElementById('checkbtn');
-		if (cb) cb.onclick = function () { checkNow(cidParam); };
+		if (cb) cb.onclick = function () { checkNow(); };
 		document.getElementById('works').innerHTML = html;
 	}
 
 	var cid = urlParams.get('cid');
-	if (!cid) {
-		document.getElementById('info').innerHTML = '<p>Provide a ?cid=container:&lt;slug&gt;</p>';
+	var family = urlParams.get('family');
+	var SCOPE;
+
+	if (!cid && !family) {
+		document.getElementById('info').innerHTML = '<p>Provide ?cid=container:&lt;slug&gt; or ?family=&lt;name&gt;</p>';
 	} else {
-		Promise.all([
-			fetch('api.php?id=' + encodeURIComponent(cid)).then(function(r){ return r.ok ? r.json() : null; }),
-			fetch('api.php?container&cid=' + encodeURIComponent(cid)).then(function(r){ return r.ok ? r.json() : {}; }),
-			fetch('biostor.php?cid=' + encodeURIComponent(cid)).then(function(r){ return r.ok ? r.json() : { matches: {} }; })
-		]).then(function(res) {
-			var meta = res[0], works = res[1], matchData = res[2];
-			var name = (meta && meta[0] && meta[0].name) ? meta[0].name : cid;
-			render(name, works, matchData);
-		});
+		var worksUrl, namePromise;
+		if (cid) {
+			SCOPE = {
+				kind: 'container',
+				checkQS: 'cid=' + encodeURIComponent(cid),
+				normal: 'containers.html?cid=' + encodeURIComponent(cid),
+				cli: 'php biostor/reconcile.php --cid ' + cid
+			};
+			worksUrl = 'api.php?container&cid=' + encodeURIComponent(cid);
+			namePromise = fetch('api.php?id=' + encodeURIComponent(cid))
+				.then(function(r){ return r.ok ? r.json() : null; })
+				.then(function(meta){ return (meta && meta[0] && meta[0].name) ? meta[0].name : cid; });
+		} else {
+			SCOPE = {
+				kind: 'author',
+				checkQS: 'family=' + encodeURIComponent(family),
+				normal: 'authors.html?family=' + encodeURIComponent(family),
+				cli: null   // the CLI reconciler is container-only; use Check now
+			};
+			worksUrl = 'api.php?author&family=' + encodeURIComponent(family);
+			namePromise = Promise.resolve(family);
+		}
+
+		Promise.all([namePromise, fetch(worksUrl).then(function(r){ return r.ok ? r.json() : {}; })])
+			.then(function(res) {
+				var name = res[0], works = res[1];
+				var ids = [];
+				for (var y in works) for (var k in works[y]) ids.push(k);
+				fetch('biostor.php', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ ids: ids })
+				}).then(function(r){ return r.ok ? r.json() : { matches: {} }; })
+				  .then(function(matchData){ render(name, works, matchData); });
+			});
 	}
 </script>
 

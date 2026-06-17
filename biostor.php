@@ -1,21 +1,32 @@
 <?php
 
 // DEV-ONLY endpoint for the BioStor coverage view. NOT part of the public release.
+// Coverage is per work-cluster, so it serves containers and authors alike.
 //
-//   GET  biostor.php?cid=container:<slug>            -> match map from the side store
-//   POST biostor.php?cid=container:<slug>&check=1    -> reconcile this container now
-//                                                       (dev only), then return the map
+//   POST biostor.php           body {"ids":[...]}     -> match map for those clusters
+//   POST biostor.php?check=1&cid=container:<slug>     -> reconcile a container now (dev)
+//   POST biostor.php?check=1&family=<name>            -> reconcile an author now (dev)
 //
-// The match data lives only in the side SQLite store, never in the CouchDB work docs.
+// Reads are a plain SQLite lookup (no CouchDB); only the dev-gated check gathers and
+// reconciles. The match data lives only in the side store, never in the work docs.
 
 header('Content-Type: application/json');
 
 $dbPath = __DIR__ . '/biostor/biostor_coverage.db';
-$cid = isset($_GET['cid']) ? $_GET['cid'] : '';
 
-// --- on-demand "Check now" (dev instances only) -----------------------------
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['check']) && $cid !== '')
+$isCheck = isset($_GET['check']);
+$cid     = isset($_GET['cid'])    ? $_GET['cid']    : '';
+$family  = isset($_GET['family']) ? $_GET['family'] : '';
+
+$out = new stdclass;
+$out->checked = null;
+$out->matches = new stdclass;
+
+$ids = array();
+
+if ($isCheck && $_SERVER['REQUEST_METHOD'] === 'POST' && ($cid !== '' || $family !== ''))
 {
+	// --- on-demand reconcile (dev instances only) ---------------------------
 	require_once(__DIR__ . '/couchsimple.php');          // $couch, $config
 	require_once(__DIR__ . '/biostor/reconcile_lib.php');
 
@@ -26,36 +37,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['check']) && $cid !== '
 		exit;
 	}
 
-	set_time_limit(0);   // a large container can take a while
+	set_time_limit(0);   // a large scope can take a while
+	$dbn = $config['couchdb_options']['database'];
+
+	if ($cid !== '')
+	{
+		$clusters = bio_gather_clusters($couch, $dbn, $cid);
+		$label = $cid;
+	}
+	else
+	{
+		$clusters = bio_gather_clusters_by_author($couch, $dbn, $family);
+		$label = 'author:' . $family;
+	}
+
 	$store = bio_open_store($dbPath);
-	bio_run_reconcile($couch, $config['couchdb_options']['database'], $cid, $store, array('sleep' => 0.1));
-	// fall through to return the freshly-written map
+	bio_run_reconcile($clusters, $store, $label, array('sleep' => 0.1));
+	$ids = array_keys($clusters);   // return the freshly-written rows
+}
+else
+{
+	// --- pure read: cluster ids supplied by the client ----------------------
+	$body = json_decode(file_get_contents('php://input'));
+	if ($body && isset($body->ids) && is_array($body->ids))
+	{
+		$ids = $body->ids;
+	}
 }
 
-// --- read + return the match map --------------------------------------------
-$out = new stdclass;
-$out->cid = $cid;
-$out->checked = null;
-$out->matches = new stdclass;
-
-if ($cid !== '' && file_exists($dbPath))
+// --- look up matches for the requested work-clusters ------------------------
+if ($ids && file_exists($dbPath))
 {
 	try
 	{
 		$db = new PDO('sqlite:' . $dbPath);
 		$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-		$stmt = $db->prepare('SELECT cluster_id, biostor_id, score, matched, checked FROM coverage WHERE cid = :cid');
-		$stmt->execute(array(':cid' => $cid));
-		foreach ($stmt as $r)
+		foreach (array_chunk($ids, 400) as $chunk)
 		{
-			$m = new stdclass;
-			$m->matched    = ((int)$r['matched']) === 1;
-			$m->biostor_id = $r['biostor_id'];
-			$m->score      = $r['score'] !== null ? (float)$r['score'] : null;
-			$out->matches->{$r['cluster_id']} = $m;
-			if ($out->checked === null || $r['checked'] > $out->checked)
+			$place = implode(',', array_fill(0, count($chunk), '?'));
+			$stmt = $db->prepare("SELECT cluster_id, biostor_id, score, matched, checked FROM coverage WHERE cluster_id IN ($place)");
+			$stmt->execute(array_values($chunk));
+			foreach ($stmt as $r)
 			{
-				$out->checked = $r['checked'];
+				$m = new stdclass;
+				$m->matched    = ((int)$r['matched']) === 1;
+				$m->biostor_id = $r['biostor_id'];
+				$m->score      = $r['score'] !== null ? (float)$r['score'] : null;
+				$out->matches->{$r['cluster_id']} = $m;
+				if ($out->checked === null || $r['checked'] > $out->checked)
+				{
+					$out->checked = $r['checked'];
+				}
 			}
 		}
 	}

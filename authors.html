@@ -123,8 +123,12 @@ Good examples include
 	var family = urlParams.get('family');
 	
 	if (family) {
+		// Resolve the dev flag first so the BioStor coverage link only shows on a
+		// development instance.
+		fetch("api.php?env").then(function(r){ return r.ok ? r.json() : { dev: false }; })
+			.catch(function(){ return { dev: false }; }).then(function(env) {
 		var url = "api.php?author&family=" + encodeURIComponent(family)
-		
+
 		fetch(url).then(
 			function(response){
 				if (response.status != 200) {
@@ -135,6 +139,10 @@ Good examples include
 				response.json().then(function(data) {
 					var html = "<h3>" + escapeHtml(family) + "</h3>";
 					html += exportLinks("api.php?author&family=" + encodeURIComponent(family));
+					if (env.dev) {
+						html += '<p style="font-size:0.85em;"><a href="biostor.html?family='
+							+ encodeURIComponent(family) + '">&#9638; BioStor coverage</a></p>';
+					}
 
 					for (var year in data) {
 						html += '<h4>' + year + '</h4>';						
@@ -160,7 +168,8 @@ Good examples include
 					document.getElementById("works").innerHTML = html;
 				});
 		});
-		
+		});
+
 	} else {
 		list_authors('A');
 	}

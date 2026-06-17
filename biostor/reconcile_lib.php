@@ -61,6 +61,35 @@ function bio_gather_clusters($couch, $dbn, $cid)
 }
 
 //----------------------------------------------------------------------------------------
+// Gather an author's works grouped by work-cluster (one representative each).
+function bio_gather_clusters_by_author($couch, $dbn, $family)
+{
+	$params = array(
+		'startkey'     => json_encode(array($family, 0), JSON_UNESCAPED_UNICODE),
+		'endkey'       => json_encode(array($family, 2030, new stdclass), JSON_UNESCAPED_UNICODE),
+		'reduce'       => 'false',
+		'include_docs' => 'true',
+	);
+	$url = '_design/interface/_view/family-year?' . http_build_query($params);
+	$resp = json_decode($couch->send("GET", "/$dbn/" . $url));
+
+	$byCluster = array();
+	if (isset($resp->rows))
+	{
+		foreach ($resp->rows as $row)
+		{
+			$doc = $row->doc;
+			$cl = isset($doc->citebank->cluster) ? $doc->citebank->cluster : $doc->_id;
+			if (!isset($byCluster[$cl]) || $doc->_id === $cl)
+			{
+				$byCluster[$cl] = $doc;
+			}
+		}
+	}
+	return $byCluster;
+}
+
+//----------------------------------------------------------------------------------------
 // Citation string BioStor matches on: "Title. Journal Vol: Pages. Year".
 function bio_citation_string($doc)
 {
@@ -113,16 +142,17 @@ function bio_reconcile_batch($endpoint, $queries)
 }
 
 //----------------------------------------------------------------------------------------
-// Reconcile one container into the store. Returns counts. $onProgress($done,$total,
-// $matched,$unmatched) is called per batch (optional).
-function bio_run_reconcile($couch, $dbn, $cid, $store, $opts = array(), $onProgress = null)
+// Reconcile a set of work-clusters into the store. $clusters is cluster_id => doc
+// (from bio_gather_clusters / bio_gather_clusters_by_author); $cidLabel is stored
+// as provenance in the `cid` column (the match itself is per work-cluster). Returns
+// counts. $onProgress($done,$total,$matched,$unmatched) is called per batch.
+function bio_run_reconcile($clusters, $store, $cidLabel, $opts = array(), $onProgress = null)
 {
 	$batch    = isset($opts['batch'])    ? (int)$opts['batch']   : 20;
 	$limit    = isset($opts['limit'])    ? (int)$opts['limit']   : 0;
 	$sleep    = isset($opts['sleep'])    ? (float)$opts['sleep'] : 0.3;
 	$endpoint = isset($opts['endpoint']) ? $opts['endpoint']     : 'https://biostor.org/reconcile';
 
-	$clusters = bio_gather_clusters($couch, $dbn, $cid);
 	$ids = array_keys($clusters);
 	if ($limit > 0) $ids = array_slice($ids, 0, $limit);
 
@@ -164,7 +194,7 @@ function bio_run_reconcile($couch, $dbn, $cid, $store, $opts = array(), $onProgr
 
 			$upsert->execute(array(
 				':cluster_id'   => $cl,
-				':cid'          => $cid,
+				':cid'          => $cidLabel,
 				':title'        => isset($doc->title) ? $doc->title : '',
 				':query'        => $queries[$qid],
 				':biostor_id'   => $best ? $best->id : null,
