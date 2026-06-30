@@ -266,7 +266,7 @@ function csl_to_openurl($csl)
 				break;
 				
 			case 'page':
-				if (preg_match('/(.*)-(.*)/', $v, $m))
+				if (preg_match('/(.*)-(.*)/u', $v, $m))
 				{
 					$parameters['rft.spage'][] = $m[1];
 					$parameters['rft.epage'][] = $m[2];						
@@ -276,6 +276,8 @@ function csl_to_openurl($csl)
 					$parameters['rft.spage'][] = $v;
 				}
 				break;
+				
+				
 				
 			case 'issued':
 				$parameters[$csl_openurl_map[$k]][] = $v->{'date-parts'}[0][0];
