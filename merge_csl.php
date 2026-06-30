@@ -39,7 +39,7 @@ function merge ($objs, $confidence = array())
 	$result->members = [];
 
 	$keys = array('author', 'title', 'container-title', 'volume', 'issue', 'page-first', 'page', 
-		'issued','DOI');
+		'issued','DOI', 'type');
 
 	$unique_values = array();
 	$values = array();
@@ -169,6 +169,7 @@ function merge ($objs, $confidence = array())
 					case 'page-first':
 					case 'page':
 					case 'DOI':
+					case 'type':
 						$value = $obj->{$k};					
 						add_unique_value($unique_values, $k, $value);
 						add_value($values, $k, $value, $index);
