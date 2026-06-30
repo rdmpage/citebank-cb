@@ -28,14 +28,20 @@
 <h1>CiteBank</h1>
 
 <h2>
-	<a href="containers.html">Containers</a> 
-	| 
+	<a href="containers.html">Containers</a>
+	|
 	<a href="authors.html">Authors</a>
-	| 
-	<a href="years.html">Years</a>	
+	|
+	<a href="years.html">Years</a>
 </h2>
 
+<form method="get" action="index.html" style="margin:1em 0;">
+	<input type="text" name="q" id="search-input" placeholder="Search titles..." style="padding:0.4em;width:24em;" />
+	<button type="submit" style="padding:0.4em 1em;">Search</button>
+</form>
+
 <div id = "output"></div>
+<h2>Debug output</h2>
 <div id = "debug" class="code"></div>
 
 <script>
@@ -132,8 +138,182 @@
 		});
 	}
 	
+// Convert a simple CSL object to OpenURL query
+function cslToOpenURL(csl) {
+  const parameters = {};
+
+  const cslOpenURLMap = {
+    type: 'TY',
+    title: 'TI',
+    author: 'rft.au',
+    'container-title': 'JO',
+    ISSN: 'rft.issn',
+    'collection-title': 'rft.series',
+    volume: 'rft.volume',
+    issue: 'rft.issue',
+    spage: 'rft.spage',
+    epage: 'rft.epage',
+    issued: 'rft.date',
+    URL: 'rft_id',
+    DOI: 'rft_id'
+  };
+
+  function add(key, value) {
+    if (value === undefined || value === null || value === '') return;
+
+    if (!parameters[key]) {
+      parameters[key] = [];
+    }
+
+    parameters[key].push(value);
+  }
+
+  add('ctx_ver', 'Z39.88-2004');
+
+  for (const [key, value] of Object.entries(csl)) {
+    switch (key) {
+      case 'type':
+        switch (value) {
+          case 'article-journal':
+          case 'journal-article':
+            add('rft_val_fmt', 'info:ofi/fmt:kev:mtx:journal');
+            add('genre', 'article');
+
+            if (csl.title) {
+              add('rft.atitle', csl.title);
+            }
+
+            if (csl['container-title']) {
+              add('rft.jtitle', csl['container-title']);
+            }
+            break;
+
+          case 'book':
+          case 'chapter':
+          default:
+            add('genre', value);
+
+            if (csl.title) {
+              add('rft.title', csl.title);
+            }
+            break;
+        }
+        break;
+
+      case 'collection-title':
+      case 'volume':
+      case 'issue':
+      case 'URL':
+        add(cslOpenURLMap[key], value);
+        break;
+
+      case 'DOI':
+        add(cslOpenURLMap[key], 'info:doi/' + value);
+        break;
+
+      case 'page': {
+        const match = value.match(/(.*)-(.*)/);
+
+        if (match) {
+          add('rft.spage', match[1]);
+          add('rft.epage', match[2]);
+        } else {
+          add('rft.spage', value);
+        }
+        break;
+      }
+
+      case 'issued':
+        if (
+          value['date-parts'] &&
+          value['date-parts'][0] &&
+          value['date-parts'][0][0]
+        ) {
+          add(cslOpenURLMap[key], value['date-parts'][0][0]);
+        }
+        break;
+
+      case 'author':
+        for (const author of value) {
+          if (author.literal) {
+            add(cslOpenURLMap[key], author.literal);
+          } else {
+            const nameParts = [];
+
+            if (author.given) {
+              nameParts.push(author.given);
+            }
+
+            if (author.family) {
+              nameParts.push(author.family);
+            }
+
+            const name = nameParts.join(' ').trim();
+
+            if (name !== '') {
+              add(cslOpenURLMap[key], name);
+            }
+          }
+        }
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  const kv = [];
+
+  for (const [key, values] of Object.entries(parameters)) {
+    for (const value of values) {
+      kv.push(key + '=' + encodeURIComponent(value));
+    }
+  }
+
+  return kv.join('&');
+}	
+	
 
 	const urlParams = new URLSearchParams(window.location.search);
+
+	// Pre-fill search box from URL
+	var qParam = urlParams.get('q');
+	if (qParam) {
+		document.getElementById('search-input').value = qParam;
+	}
+
+	// Search results
+	if (qParam) {
+		var url = "api.php?q=" + encodeURIComponent(qParam);
+
+		fetch(url).then(function(response) {
+			if (response.status != 200) {
+				document.getElementById("output").innerHTML = '<p>No results for <em>' + escapeHtml(qParam) + '</em>.</p>';
+				return;
+			}
+
+			response.json().then(function(data) {
+				var html = '<h3>Results for &ldquo;' + escapeHtml(qParam) + '&rdquo;</h3>';
+				html += '<ul style="list-style: none;">';
+				for (var k = 0; k < data.length; k++) {
+					var entry = data[k];
+					var citation = new Cite(entry.csl);
+
+					html += '<li style="padding:0.3em;">';
+					html += '<a href="./?cluster=' + encodeURIComponent(entry.cluster_id) + '">';
+					html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
+					html += '</a>';
+					if (entry.cluster_size > 1) {
+						html += ' <strong>(' + entry.cluster_size + ' records)</strong>';
+					}
+					html += '</li>';
+				}
+				html += '</ul>';
+
+				document.getElementById("output").innerHTML = html;
+			});
+		});
+	}
 
 	var id = urlParams.get('id');
 
@@ -240,15 +420,22 @@
 						
 				response.json().then(function(data) {
 					var html = "<h2>" + escapeHtml(data.consensus.title) + "</h2>";
+					
+					html += '<div>';
+					if (data.consensus.issued) {
+						html += 'Published ' + data.consensus.issued['date-parts'][0];
+					}
 
+					if (data.consensus['container-title']) {
+						html += ' in <a href="containers.html?title=' + encodeURIComponent(data.consensus['container-title']) + '">' + data.consensus['container-title'] + '</a>';
+					}
+					html += '</div>';
+					
+					html += '<div>';
 					if (data.consensus.DOI) {
 						html += '<a href="https://doi.org/' + encodeURIComponent(data.consensus.DOI) + '" target="_new">doi:' + escapeHtml(data.consensus.DOI) + '</a><br />';
 					}
-					
-					// Nicely format the citation
-					var citation = new Cite(data.consensus);
-					
-					html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
+					html += '</div>';
 					
 					html += '<div>';
 					
@@ -260,14 +447,26 @@
 					}
 					
 					// cited by
-					html += " cited by " + data.consensus['is-referenced-by'].length;
-					
+					html += ", cited by " + data.consensus['is-referenced-by'].length;					
 					html += '</div>';
 					
 					// simple lookup
 					html += '<div>';
 					html += '<a href="https://biostor.org/?q=' + encodeURIComponent(data.consensus.title) + '" target="_new">Search on BioStor</a><br />';
 					html += '</div>';
+					
+					// OpenURL
+					html += '<div>';
+					html += '<a href="http://localhost/biostor-classic/www/openurl?' + cslToOpenURL(data.consensus) + '" target="_new">OpenURL</a>';
+					html += '</div>';
+					
+						// Nicely format the citation
+					var citation = new Cite(data.consensus);
+					
+					html += '<div style="border:1px solid #CCC;padding:1em;">';
+					html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
+					html += '</div>';
+					
 				
 					document.getElementById("output").innerHTML = html;
 				
