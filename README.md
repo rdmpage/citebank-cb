@@ -55,6 +55,12 @@ In some cases lists of literature cited may be extracted from PDFs and converted
 
 Given that the same reference may be found in multiple sources, CiteBank includes automated tools to cluster records that are likely to be the same, and can construct a consensus of those records.
 
+## Running automated clustering script locally
+
+```
+do php /Users/rpage/Sites/citebank-cb/worker.php; sleep 1; done
+```
+
 ## Clustering cases to look at
 
 ### Zur Kenntnis javanischer Agromyzinen
