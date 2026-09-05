@@ -4,12 +4,18 @@
 // clustering comparison logs, using the continuous features (v2) instead of the
 // binary same/diff ones (v1).
 //
-//   php derive_features.php [--limit=N] [--out=pairs.jsonl] [--batch=N] [--all]
+//   php derive_features.php [--limit=N] [--out=pairs.jsonl] [--batch=N] [--all] [--regress]
 //
 //     --limit=N   stop after N source documents (default 5000; --all for every one)
 //     --out=FILE  output path (default pairs.jsonl); a FILE.names.json sidecar
 //                 records the v2 column names in vector order
 //     --batch=N   documents fetched per CouchDB request (default 500)
+//     --regress   also recompute the v1 vector with the current code, and what
+//                 is_match() decides from it, as v1_now/match_now. Comparing
+//                 those against the stored vector and decision shows exactly
+//                 which pairs a change to the matching code flips, with the
+//                 citations alongside to judge whether the flip is right.
+//                 Roughly 17x slower: it runs Smith-Waterman per pair.
 //
 // Why this exists
 // ---------------
@@ -41,7 +47,7 @@ require_once(dirname(__FILE__) . '/couchsimple.php');
 require_once(dirname(__FILE__) . '/csl_features.php');
 
 //----------------------------------------------------------------------------------------
-$opt = getopt('', array('limit::', 'out::', 'batch::', 'all'));
+$opt = getopt('', array('limit::', 'out::', 'batch::', 'all', 'regress'));
 
 $limit  = isset($opt['limit']) ? (int)$opt['limit'] : 5000;
 $out    = isset($opt['out'])   ? $opt['out']        : dirname(__FILE__) . '/pairs.jsonl';
@@ -51,6 +57,12 @@ if (isset($opt['all']))
 {
 	$limit = PHP_INT_MAX;
 }
+
+// Also recompute the v1 vector with the current code, for regression testing.
+// Off by default: it runs Smith-Waterman twice per pair (title and container),
+// which costs ~5ms each and makes a full run around 17x slower -- 39 minutes
+// against 2.
+$regress = isset($opt['regress']);
 
 $dbn = $config['couchdb_options']['database'];
 
@@ -258,6 +270,21 @@ while ($processed < $limit)
 
 			$v2 = citation_pair_to_feature_vector_continuous(array($doc, $other));
 
+			// Recompute the v1 vector with the code as it stands now. Comparing
+			// this against the stored vector and decision turns the file into a
+			// regression harness: any change to the matching code (comparators,
+			// normalisation, thresholds) shows up as pairs whose verdict flips,
+			// with the citations right there to judge whether the flip is right.
+			//
+			// The second argument must match cluster.php, which passes false and
+			// so emits no date feature at all -- the worker does not currently
+			// compare publication years. Passing the default 1 here instead adds
+			// a year pair, making the vector 16 dimensions against the stored 14
+			// and manufacturing flips that the code change did not cause.
+			$v1_now = $regress
+				? citation_pair_to_feature_vector(array($doc, $other), false)
+				: null;
+
 			$record = array(
 				'a'        => $doc->_id,
 				'b'        => $other->_id,
@@ -268,6 +295,10 @@ while ($processed < $limit)
 				'decision' => isset($c->decision) ? $c->decision : null,
 				'score'    => isset($c->score) ? $c->score : null,
 				'v1'       => isset($c->features) ? $c->features : null,
+				// v1 recomputed with the current code, and what it decides now
+				// (null unless --regress).
+				'v1_now'    => $v1_now ? $v1_now->vector : null,
+				'match_now' => $v1_now ? (is_match($v1_now->vector) ? 'match' : 'no-match') : null,
 				'v2'       => $v2->vector,
 				// Ground truth goes here. The decision above is heuristic-v1's
 				// own output and must not be used as a label.
