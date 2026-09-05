@@ -207,6 +207,174 @@ function tier2_candidates($hash)
 }
 
 //----------------------------------------------------------------------------------------
+// Tier 3: fuzzy title search (Nouveau).
+//
+// Tiers 1 and 2 both block on exact keys -- a DOI, or a [year, volume,
+// first-page] hash. Only 19% of works carry a DOI, so for the other 81% the
+// year+volume+page hash is the only route, and any disagreement in any of the
+// three makes two duplicates permanently uncomparable. That is a real gap: the
+// same article dated 1883 in one reference list and 1884 in another, identical
+// down to the page range, never becomes a candidate pair.
+//
+// Tier 3 blocks on the title instead, so records that disagree on year or
+// volume can still be compared. It runs only when the cheaper exact tiers found
+// nothing.
+//
+// Precision is left to cluster_candidates(): sharing a title is not evidence of
+// much on its own, but is_match() needs three agreeing fields and vetoes on any
+// disagreement, so two different articles that happen to share a title are
+// rejected on their volume or pages.
+
+// How many title tokens to put in the query. Enough for precision, few enough
+// that a variant spelling of one word does not lose the match.
+define('TIER3_MAX_TOKENS', 8);
+
+// Below this many usable tokens the title is too generic to block on -- a query
+// for "Notes" alone matches 13,058 records.
+define('TIER3_MIN_TOKENS', 3);
+
+// A title matching more records than this is generic (or the tokens are all
+// common); the hits are unlikely to be duplicates and are not worth fetching.
+define('TIER3_MAX_HITS', 500);
+
+// Candidates to pull back for comparison.
+define('TIER3_LIMIT', 25);
+
+//----------------------------------------------------------------------------------------
+// Build a Lucene query for a doc's title, or null when the title is unusable.
+//
+// Note the index is not accent-folded: a query for "Coleopteres" matches
+// nothing while "Coléoptères" matches 14 records, so tokens are passed through
+// as they appear rather than being normalised the way compare.php would.
+function tier3_query($doc)
+{
+	$title = isset($doc->title) ? $doc->title : null;
+	if (is_array($title))
+	{
+		$title = isset($title[0]) ? $title[0] : null;
+	}
+	if (!is_string($title) || $title === '')
+	{
+		return null;
+	}
+
+	$title = strip_tags($title);
+	$title = html_entity_decode($title, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+	// Split on anything that is not a letter or digit.
+	$tokens = preg_split('/[^\p{L}\p{N}]+/u', $title, -1, PREG_SPLIT_NO_EMPTY);
+
+	if ($tokens === false)
+	{
+		return null;
+	}
+
+	// Keep the longer tokens: short ones are overwhelmingly articles and
+	// prepositions ("de", "la", "sur", "the", "of"), which cost query precision
+	// without adding any.
+	$useful = array();
+	foreach ($tokens as $t)
+	{
+		if (mb_strlen($t) >= 4)
+		{
+			$useful[$t] = $t;   // dedupe, keep first-seen order
+		}
+	}
+	$useful = array_values($useful);
+
+	if (count($useful) < TIER3_MIN_TOKENS)
+	{
+		return null;
+	}
+
+	// Prefer the longest tokens, which carry the most information (genus names,
+	// place names), then restore title order so the query reads sensibly.
+	if (count($useful) > TIER3_MAX_TOKENS)
+	{
+		$byLength = $useful;
+		usort($byLength, function ($a, $b) { return mb_strlen($b) - mb_strlen($a); });
+		$keep = array_flip(array_slice($byLength, 0, TIER3_MAX_TOKENS));
+
+		$trimmed = array();
+		foreach ($useful as $t)
+		{
+			if (isset($keep[$t]))
+			{
+				$trimmed[] = $t;
+			}
+		}
+		$useful = $trimmed;
+	}
+
+	$clauses = array();
+	foreach ($useful as $t)
+	{
+		// Escape the Lucene query-syntax metacharacters.
+		$escaped = preg_replace('/([+\-&|!(){}\[\]^"~*?:\\\\\/])/u', '\\\\$1', $t);
+		$clauses[] = 'title:' . $escaped;
+	}
+
+	return join(' AND ', $clauses);
+}
+
+//----------------------------------------------------------------------------------------
+// Fetch docs whose titles match this doc's title (Tier 3).
+function tier3_candidates($doc)
+{
+	global $couch;
+	global $config;
+
+	$query = tier3_query($doc);
+
+	if ($query === null)
+	{
+		return array();
+	}
+
+	$url  = '_design/search/_nouveau/full-text?q=' . rawurlencode($query);
+	$url .= '&limit=' . TIER3_LIMIT;
+	$url .= '&include_docs=true';
+
+	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+	$obj  = json_decode($resp);
+
+	// Nouveau is a separate service and may simply be down (see start-nouveau.sh);
+	// that must not stall the queue, so treat it as "no candidates".
+	if (!$obj || !isset($obj->hits) || !is_array($obj->hits))
+	{
+		return array();
+	}
+
+	if (isset($obj->total_hits) && $obj->total_hits > TIER3_MAX_HITS)
+	{
+		return array();
+	}
+
+	$candidates = array();
+	foreach ($obj->hits as $hit)
+	{
+		if (!isset($hit->doc) || $hit->doc === null)
+		{
+			continue;
+		}
+
+		// The index covers works only, but guard anyway.
+		if (!isset($hit->doc->citebank->type) || $hit->doc->citebank->type != 'work')
+		{
+			continue;
+		}
+		if (isset($hit->doc->citebank->deleted))
+		{
+			continue;
+		}
+
+		$candidates[] = $hit->doc;
+	}
+
+	return $candidates;
+}
+
+//----------------------------------------------------------------------------------------
 // Stamp visited + algorithm and PUT. Used when there's nothing to cluster
 // (singleton at every tier, or no usable blocking key), so the record still
 // advances in the queue.
@@ -265,8 +433,10 @@ function try_cluster($doc, $candidates, $tier_label)
 //----------------------------------------------------------------------------------------
 
 // Run the tier ladder on one doc: DOI exact, then year+volume+first-page hash,
-// else just stamp it visited so it advances. (Tier 3 Nouveau will slot in above
-// the mark_visited fallback once it exists.)
+// then fuzzy title search, else just stamp it visited so it advances.
+//
+// Ordered cheapest and most precise first. Tier 3 needs a request to Nouveau,
+// so it only runs for records the exact keys could not place.
 function process_doc($doc)
 {
 	echo "visiting " . $doc->_id . "\n";
@@ -278,6 +448,11 @@ function process_doc($doc)
 
 	$hash = compute_hash($doc);
 	if ($hash !== null && try_cluster($doc, tier2_candidates($hash), 'hash-y-v-p'))
+	{
+		return;
+	}
+
+	if (try_cluster($doc, tier3_candidates($doc), 'title-search'))
 	{
 		return;
 	}
