@@ -182,6 +182,86 @@ function citation_pair_to_feature_vector($obj, $date_precision = 1)
 	return $result;
 }
 
+//----------------------------------------------------------------------------------------
+// Continuous feature vector (v2).
+//
+// Same input as citation_pair_to_feature_vector, but every field contributes a
+// [score, present] pair instead of [same, diff]. See the "Continuous features"
+// block in feature.php for why.
+//
+// v1 is left exactly as it was: is_match(), cluster.php and the stored
+// comparison logs all depend on its 14-dimension same/diff layout, and this
+// function is not a drop-in replacement for it. Nothing here changes how the
+// worker clusters; this exists to derive training data.
+//
+// Layout, 11 features -> 22 dimensions:
+//
+//    0  author_edit        first author family, edit similarity
+//    1  title_trigram      title, trigram Jaccard
+//    2  title_edit         title, edit similarity
+//    3  container_trigram  container-title, trigram Jaccard
+//    4  container_edit     container-title, edit similarity
+//    5  volume             exact
+//    6  issue              exact
+//    7  page_first         leading page number, exact
+//    8  page_exact         whole page string, exact
+//    9  doi                exact
+//   10  year               graded proximity, decaying over 5 years
+//
+// Both a trigram and an edit score are kept for the two free-text fields
+// because they fail differently: trigram is order-insensitive and better at
+// spotting unrelated strings, edit distance is better on single-character noise.
+// Which of them carries the signal is a question for the model, not for us.
+function citation_pair_to_feature_vector_continuous($obj)
+{
+	$features = array();
+
+	$features[] = feature_author_score('author_edit', 'author', $obj[0], $obj[1], 0);
+
+	$features[] = feature_text_score('title_trigram', 'title', $obj[0], $obj[1], 'trigram');
+	$features[] = feature_text_score('title_edit', 'title', $obj[0], $obj[1], 'edit');
+
+	$features[] = feature_text_score('container_trigram', 'container-title', $obj[0], $obj[1], 'trigram');
+	$features[] = feature_text_score('container_edit', 'container-title', $obj[0], $obj[1], 'edit');
+
+	$features[] = feature_exact_score('volume', 'volume', $obj[0], $obj[1]);
+	$features[] = feature_exact_score('issue', 'issue', $obj[0], $obj[1]);
+
+	$features[] = feature_first_page_score('page_first', $obj[0], $obj[1]);
+	$features[] = feature_exact_score('page_exact', 'page', $obj[0], $obj[1]);
+
+	$features[] = feature_exact_score('doi', 'DOI', $obj[0], $obj[1]);
+
+	$features[] = feature_year_score('year', 'issued', $obj[0], $obj[1], 5);
+
+	$result = new stdclass;
+	$result->k_v    = array();
+	$result->vector = array();
+
+	foreach ($features as $feature)
+	{
+		foreach ($feature as $k => $v)
+		{
+			$result->k_v[$k]    = $v;
+			$result->vector[]   = $v;
+		}
+	}
+
+	return $result;
+}
+
+//----------------------------------------------------------------------------------------
+// Column names for citation_pair_to_feature_vector_continuous, in vector order.
+function continuous_feature_names()
+{
+	$empty = new stdclass;
+	$empty->citebank = new stdclass;
+
+	$probe = citation_pair_to_feature_vector_continuous(array($empty, $empty));
+
+	return array_keys($probe->k_v);
+}
+
 // test
 if (0)
 {

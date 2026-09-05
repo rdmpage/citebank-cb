@@ -7,6 +7,11 @@ env.php
 # would redistribute copyrighted work, and git history makes that hard to undo.
 /reading/
 
+# Candidate pairs re-derived from the clustering comparison logs.
+# Regenerate with: php derive_features.php --all
+/pairs.jsonl
+/pairs.jsonl.names.json
+
 # The container clustering pipeline's input and output both live in clustering/
 # and are committed there, gzipped (container.tsv.gz, container_docs.json.gz).
 # See clustering/.gitignore for what is deliberately not committed.
