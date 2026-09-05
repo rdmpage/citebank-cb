@@ -1,4 +1,5 @@
 *.html
 *.json
 *.jsonl
+*.txt
 *.xml

@@ -32,7 +32,6 @@ Credentials come from `env.php` (gitignored — copy `env-template.php`).
 Calling `api.php` with no parameters returns a list of the available endpoints.
 
 
-
 ## Data format
 
 CiteBank uses CSL-JSON to represent bibliographic records. This is the format used by tools to display citations in various formats, and is supported by most DOI resolution agencies (via content negotiation).
@@ -41,7 +40,7 @@ CiteBank uses CSL-JSON to represent bibliographic records. This is the format us
 
 ### DOI resolution
 
-DOis for publications can, in many cases, be resolved to CSL-JSON  using content negotiation. If the HTTP `Accept` header is set to `application/vnd.citationstyles.csl+json` then there is a good chance you will get CSL-JSON back. CrossRef is an excellent example of this.
+DOIs for publications can, in many cases, be resolved to CSL-JSON using content negotiation. If the HTTP `Accept` header is set to `application/vnd.citationstyles.csl+json` then there is a good chance you will get CSL-JSON back. CrossRef is an excellent example of this.
 
 ### JATS XML
 
@@ -49,7 +48,7 @@ If a publication is available in JATS XML (e.g., Pensoft journals, PubMed Centra
 
 Note that markup can be incorrect or inadequate. For example, this record from https://doi.org/10.3897/zookeys.834.28800 doesn’t mark up the title or journal. At the moment records like this are accepted.
 
-```
+```xml
 <ref id="B16">
   <mixed-citation xlink:type="simple">
   <person-group>
@@ -68,7 +67,7 @@ Note that markup can be incorrect or inadequate. For example, this record from h
 
 ### HTML
 
-If an article webpage supports Google Scholar tags then it may well have the literature cited included in individual `<meta name="citation_reference" content="…">` tags. Each reference will be an unstructured text string, so we need a citation parser such as https://github.com/rdmpage/citation-parsing to convert the string to CSL-JSON.
+If an article webpage supports Google Scholar tags then it may also have the literature cited included in individual `<meta name="citation_reference" content="…">` tags. Each reference will be an unstructured text string, so we need a citation parser such as https://github.com/rdmpage/citation-parsing to convert the string to CSL-JSON.
 
 ### Text
 
@@ -92,7 +91,7 @@ Records from Naturalis, CrossRef, and Zookeys citation
 
 Note also Naturalis has more detailed breakdown of author's name:
 
-```
+```json
 "author": [
     {
       "family": "Meijere",
