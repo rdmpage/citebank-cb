@@ -5,6 +5,31 @@ require_once (dirname(__FILE__) . '/config.inc.php');
 $couch = new CouchSimple($config['couchdb_options']);
 
 //--------------------------------------------------------------------------------------------------
+// Encode a document as a request body for CouchDB.
+//
+// Always use this rather than a bare json_encode() for anything sent as a PUT or
+// POST body. PHP's default escapes non-ASCII characters as \uXXXX, and this
+// CouchDB (3.4.2) does not merely reject such a body -- it drops the connection
+// and restarts, so the caller sees "CURL error 52 Empty reply from server" and
+// every other request in flight fails too.
+//
+// Reproduced down to a single document: PUT {"title":"Coléoptères"}
+// kills it, while the same document with the characters sent as UTF-8 is
+// accepted. Nothing exotic is involved -- e-acute, e-grave, a-grave, a curly
+// apostrophe and an en dash. Escaped forward slashes are fine; only the \uXXXX
+// escaping matters.
+//
+// This mattered a great deal: it meant the clustering worker could not write
+// back any record containing an accented character, which in a corpus of French,
+// German and Latin taxonomic literature is most of them. The worker exits on a
+// curl error, so a record with an accent stalled the head of the queue
+// permanently -- which is why two thirds of the database had never been visited.
+function couch_encode($obj)
+{
+	return json_encode($obj, JSON_UNESCAPED_UNICODE);
+}
+
+//--------------------------------------------------------------------------------------------------
 class CouchSimple
 {
 	//------------------------------------------------------------------------------------
@@ -113,7 +138,7 @@ class CouchSimple
 		if ($operation == 'add')
 		{
 			// add (PUT as we have identifier)
-			$resp = $this->send("PUT", "/" . $this->database . "/" . urlencode($id), json_encode($obj));
+			$resp = $this->send("PUT", "/" . $this->database . "/" . urlencode($id), couch_encode($obj));
 			$r = json_decode($resp);
 			
 			if (isset($r->error))
@@ -141,7 +166,7 @@ class CouchSimple
 				else
 				{
 					$obj->_rev = $rev;
-					$resp = $this->send("PUT", "/" . $this->database . "/" . urlencode($id), json_encode($obj));
+					$resp = $this->send("PUT", "/" . $this->database . "/" . urlencode($id), couch_encode($obj));
 				}
 				//var_dump($resp);
 				break;

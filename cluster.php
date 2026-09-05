@@ -139,7 +139,7 @@ function cluster_candidates($candidates, $tier = 'doi-exact')
 		$resp = $couch->send(
 			"PUT",
 			"/" . $config['couchdb_options']['database'] . "/" . urlencode($id),
-			json_encode($doc)
+			couch_encode($doc)
 		);
 
 		echo $id . " -> cluster " . $cluster_id . "\n";

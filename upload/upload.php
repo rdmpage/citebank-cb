@@ -41,7 +41,7 @@ function upload($doc, $source='unknown', $force = false)
 		$doc->citebank->fetched  = $doc->citebank->created;
 		$doc->citebank->cluster = $doc->_id;
 			
-		$resp = $couch->send("PUT", "/" . $config['couchdb_options']['database'] . "/" . urlencode($doc->_id), json_encode($doc));
+		$resp = $couch->send("PUT", "/" . $config['couchdb_options']['database'] . "/" . urlencode($doc->_id), couch_encode($doc));
 		var_dump($resp);							
 	}	
 

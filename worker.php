@@ -230,7 +230,7 @@ function mark_visited($doc)
 	$couch->send(
 		"PUT",
 		"/" . $config['couchdb_options']['database'] . "/" . urlencode($doc->_id),
-		json_encode($doc)
+		couch_encode($doc)
 	);
 }
 
