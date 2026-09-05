@@ -1,9 +1,9 @@
 <?php
 
 // Dump the raw container-title / ISSN pairs that feed the container clustering
-// pipeline, as container.tsv:
+// pipeline:
 //
-//   php get_view.php > container.tsv
+//   php get_view.php > clustering/container.tsv
 //
 // Output is one row per distinct (container-title, ISSN) pair seen on a work
 // record, tab separated, with an empty second column where no ISSN is known.
@@ -11,16 +11,21 @@
 // produces container_docs.json, which couch_push.php loads back into CouchDB as
 // the container docs.
 //
+// You only need to run this to refresh the input from a live database: the last
+// dump is committed as clustering/container.tsv.gz, and clustering/import.php
+// reads that directly. A plain clustering/container.tsv, if present, wins over
+// the gzip.
+//
 // History, because this bit the project once already: the original version of
 // this script read _design/container/_view/containers, a view that was created
 // by hand and never committed. On 2026-06-14 _design/container was rewritten to
 // hold the container clustering *output* and that view was overwritten, which
-// silently broke regeneration -- container.tsv survived only because nobody
-// deleted it. The view now lives in its own design document (couchdb/source.js,
+// silently broke regeneration -- the dump survived only because nobody deleted
+// it. The view now lives in its own design document (couchdb/source.js,
 // _design/source) precisely so that regenerating the container docs cannot
 // clobber the thing needed to regenerate their input.
 //
-// Note this only works while the works database is populated: container.tsv is
+// Note this only works while the works database is populated: the dump is
 // derived from doc['container-title'] and doc.ISSN across every work record.
 
 ini_set('memory_limit', '-1');

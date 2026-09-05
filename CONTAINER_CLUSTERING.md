@@ -21,25 +21,29 @@ dedup) clustering see [`DESIGN.md`](DESIGN.md) and
 
 ```
 works in CouchDB ──► container.tsv ──► SQLite clustering ──► container_docs.json ──► CouchDB container docs
-(_design/source,     (146k raw names)   (clustering/)         (couch_export.php)      (_design/container)
- get_view.php)                                                        │                     │
-                                                                      │                     │
-                                          committed as ◄──────────────┘                     │
-                                          container_docs.json.gz                            │
+(_design/source,     (146,745 rows)     (clustering/)         (couch_export.php)      (_design/container)
+ get_view.php)             │                                          │                     │
+                           │                                          │                     │
+        committed as ◄─────┘                       committed as ◄─────┘                     │
+        clustering/                                clustering/                              │
+        container.tsv.gz                           container_docs.json.gz                   │
                                                                                             │
                                           containers.html ◄─────────────────────────────────┤  browse
                                           worker.php --cid ◄─────────────────────────────────┘  cluster works per journal
 ```
 
-Note the whole chain hangs off a populated works database. See
+Both the input and the output of the clustering live in `clustering/`, gzipped
+and committed, because the whole chain hangs off a populated works database. See
 [Restoring into an empty or rebuilt database](#restoring-into-an-empty-or-rebuilt-database).
 
 ---
 
 ## 1. Offline clustering (SQLite) — `clustering/`
 
-Input: `container.tsv` (col 1 = raw `container-title`, col 2 = ISSN if known),
-~146k rows, almost all distinct, ~0.5% with an ISSN.
+Input: `clustering/container.tsv.gz` (col 1 = raw `container-title`, col 2 = ISSN
+if known), 146,745 rows, almost all distinct, ~0.5% (704) with an ISSN.
+`import.php` reads the gzip directly; refresh it from a live database with
+`php get_view.php > clustering/container.tsv`.
 
 Two passes (see `clustering/README.md` for the keys and measures):
 
@@ -150,13 +154,21 @@ files. At present there is exactly one (`acta-arachnologica.json`).
 This works on an empty database: `variants` are raw title strings, so the docs
 resolve any work whose `container-title` matches, whenever those works arrive.
 
-**Why it is committed rather than regenerated.** The pipeline runs
+**Why these are committed rather than regenerated.** The pipeline runs
 `works DB → get_view.php → container.tsv → clustering/ → container_docs.json`.
-Every step upstream of the output depends on a populated works database, so
-wiping or re-sourcing the database makes the clustering unreproducible — the
-~146k raw spellings it was derived from are gone with it. The gzipped output is
-therefore the durable artifact. `container.tsv` is *not* committed; archive it
-separately if you want to be able to re-tune the algorithm after a wipe.
+Every step depends on a populated works database, so wiping or re-sourcing the
+database makes the clustering unreproducible — the 146,745 raw spellings it was
+derived from go with it. Both ends of the pipeline are therefore committed,
+gzipped, in `clustering/`:
+
+| file | role | size |
+|---|---|---|
+| `container.tsv.gz` | input — lets you re-tune and re-run the clustering after a wipe | 1.6MB |
+| `container_docs.json.gz` | output — lets you re-seed the container docs without re-running anything | 2.7MB |
+
+Keeping the input as well as the output is what makes the algorithm still
+improvable on a fresh database; the output alone would freeze the clustering as
+it stood on 2026-06-14.
 
 ## Known issues / review backlog
 
@@ -183,12 +195,13 @@ separately if you want to be able to re-tune the algorithm after a wipe.
 
 | path | role |
 |---|---|
-| `couchdb/source.js` | `_design/source` — the view `get_view.php` dumps `container.tsv` from. Kept in its own design document so regenerating the container docs cannot clobber the input to regenerating them |
-| `get_view.php` | `_design/source` → `container.tsv` (pipeline input) |
+| `couchdb/source.js` | `_design/source` — the view `get_view.php` dumps the raw titles from. Kept in its own design document so regenerating the container docs cannot clobber the input to regenerating them |
+| `get_view.php` | `_design/source` → `clustering/container.tsv` (pipeline input) |
 | `clustering/` | offline SQLite clustering (import, keys, passes, exports) — see its README |
+| `clustering/container.tsv.gz` | committed pipeline **input** — 146,745 raw title/ISSN rows; `import.php` reads the gzip directly |
 | `clustering/couch_export.php` | clusters → `container_docs.json` (curation-aware, dry run) |
 | `clustering/couch_push.php` | bulk `_bulk_docs` load into CouchDB |
-| `clustering/container_docs.json.gz` | committed clustering output — the durable artifact; reload with `couch_push.php` |
+| `clustering/container_docs.json.gz` | committed pipeline **output** — reload with `couch_push.php` |
 | `couchdb/container.js` | `_design/container` views (clustering *output*) |
 | `acta-arachnologica.json` | hand-built container-doc template (`curated:true`) |
 | `api.php` | container API routes (`get_containers_*`, `get_container_for_variant`, `get_works_by_container_id`) |

@@ -5,9 +5,21 @@ groups that (approximately) correspond to one journal.
 
 ## Data
 
-`../container.tsv` — no header. Column 1 = raw container-title, column 2 = ISSN
-(often blank). ~147k rows, almost all distinct. Only ~0.5% carry an ISSN, but
-those ISSNs are used as ground truth for tuning.
+`container.tsv.gz` (in this directory, committed) — no header. Column 1 = raw
+container-title, column 2 = ISSN (often blank). 146,745 rows, almost all
+distinct. Only ~0.5% (704 rows) carry an ISSN, but those ISSNs are used as
+ground truth for tuning.
+
+`import.php` reads the gzip directly, so there is no need to unpack it.
+
+It is committed rather than regenerated because it is a dump of the works
+database (`../get_view.php`, reading `_design/source`), and so cannot be
+reproduced once that database is wiped or rebuilt from different sources. To
+refresh it from a live database:
+
+```
+php ../get_view.php > container.tsv     # plain file wins over the .gz if present
+```
 
 ## Pipeline
 

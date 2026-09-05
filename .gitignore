@@ -2,10 +2,6 @@ env.php
 .DS_Store
 /junk/
 
-# Large CouchDB dump that feeds the container clustering pipeline.
-# Regenerate with: php get_view.php > container.tsv
-# That only works while the works database is populated -- container.tsv is
-# derived from container-title/ISSN across every work record. If you are about
-# to wipe the database, archive this file first; the clustering *output* is kept
-# in clustering/container_docs.json.gz, which is committed.
-/container.tsv
+# The container clustering pipeline's input and output both live in clustering/
+# and are committed there, gzipped (container.tsv.gz, container_docs.json.gz).
+# See clustering/.gitignore for what is deliberately not committed.

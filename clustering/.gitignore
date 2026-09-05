@@ -1,11 +1,17 @@
-# Generated clustering artifacts — large; keep the uncompressed copies out of git.
+# Clustering artifacts — keep the large uncompressed copies out of git.
 #
-# These are only regenerable from container.tsv, which is itself only
-# regenerable from a populated works database (see ../get_view.php). So the end
-# product of the pipeline, container_docs.json, is NOT safely reproducible once
-# the database is wiped or rebuilt from different sources -- a gzipped copy is
-# committed alongside as container_docs.json.gz, and that is the file to reload
-# from (clustering/couch_push.php) when seeding a new database.
+# The two files that matter are committed here, gzipped:
+#
+#   container.tsv.gz       pipeline INPUT  — dump of the works database
+#                          (../get_view.php, _design/source)
+#   container_docs.json.gz pipeline OUTPUT — reload with couch_push.php
+#
+# Both are committed rather than regenerated because every step upstream of them
+# depends on a populated works database, so neither is reproducible once that
+# database is wiped or rebuilt from different sources. import.php and the restore
+# instructions read the .gz directly; the plain files below are just working
+# copies, regenerable from the .gz or from a live database.
+container.tsv
 containers.db
 containers.db-shm
 containers.db-wal

@@ -5,19 +5,42 @@
 //
 //   php import.php [path-to-tsv] [path-to-db]
 //
-// Defaults: ../container.tsv  ->  containers.db (in this directory)
+// Defaults: container.tsv, or container.tsv.gz if the plain file is absent,
+// both in this directory  ->  containers.db (also in this directory)
+//
+// A .gz path is read directly through the zlib stream wrapper, so there is no
+// need to unpack the committed container.tsv.gz before running this.
 //
 // The TSV has no header: column 1 = raw container-title, column 2 = ISSN (maybe blank).
 
 require_once(__DIR__ . '/clean.php');
 
-$tsv = isset($argv[1]) ? $argv[1] : __DIR__ . '/../container.tsv';
+if (isset($argv[1]))
+{
+	$tsv = $argv[1];
+}
+else
+{
+	// container.tsv.gz is the committed copy; a plain container.tsv (e.g. freshly
+	// regenerated with ../get_view.php) wins if present.
+	$tsv = __DIR__ . '/container.tsv';
+
+	if (!file_exists($tsv))
+	{
+		$tsv = __DIR__ . '/container.tsv.gz';
+	}
+}
+
 $dbPath = isset($argv[2]) ? $argv[2] : __DIR__ . '/containers.db';
 
 if (!file_exists($tsv)) {
 	fwrite(STDERR, "TSV not found: $tsv\n");
+	fwrite(STDERR, "Regenerate it with: php ../get_view.php > " . __DIR__ . "/container.tsv\n");
 	exit(1);
 }
+
+// Transparent gzip support: fgets() works unchanged through this wrapper.
+$openPath = (substr($tsv, -3) === '.gz') ? 'compress.zlib://' . $tsv : $tsv;
 
 $db = new PDO('sqlite:' . $dbPath);
 $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -48,7 +71,7 @@ $insert = $db->prepare('
 	VALUES (:raw, :issn, :normalized, :tokens, :series, :key_a, :key_b, :key_c, :key_d)
 ');
 
-$fh = fopen($tsv, 'r');
+$fh = fopen($openPath, 'r');
 if (!$fh) {
 	fwrite(STDERR, "Cannot open: $tsv\n");
 	exit(1);
