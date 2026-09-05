@@ -2,6 +2,11 @@ env.php
 .DS_Store
 /junk/
 
+# Background reading — third-party papers kept locally for reference. This is a
+# public repository, so they are deliberately not committed: publishing them
+# would redistribute copyrighted work, and git history makes that hard to undo.
+/reading/
+
 # The container clustering pipeline's input and output both live in clustering/
 # and are committed there, gzipped (container.tsv.gz, container_docs.json.gz).
 # See clustering/.gitignore for what is deliberately not committed.
