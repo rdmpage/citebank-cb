@@ -8,6 +8,7 @@
 	<script>
 		const Cite = require('citation-js')
 	</script>
+	<script src="js/citations.js"></script>
 	
 </head>
 <body>
@@ -144,28 +145,36 @@ Good examples include
 							+ encodeURIComponent(family) + '">&#9638; BioStor coverage</a></p>';
 					}
 
-					for (var year in data) {
-						html += '<h4>' + year + '</h4>';						
+					var works = document.getElementById("works");
+					works.innerHTML = html;
 
-						html += '<ul style="list-style: none;">';
-						for (var i in data[year]) {
-							var entry = data[year][i];
-							var citation = new Cite(entry.csl);
+					// One citation-js call per year rather than one per record, and
+					// a year at a time rather than all at once; see js/citations.js.
+					// A prolific family name (Smith has ~3,100 clustered works) is
+					// otherwise slow enough to lock the tab for many seconds.
+					var years = Object.keys(data);
 
-							html += '<li style="padding:0.3em;">';
-							html += '<a href="./?cluster=' + encodeURIComponent(i) + '">';
-							html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
-							html += '</a>';
-							if (entry.cluster_size > 1) {
-								html += ' <strong>(' + entry.cluster_size + ' records)</strong>';
+					renderProgressively(works, years, function(year) {
+						var out = '<h4>' + year + '</h4>';
+						var rows = formatEntryMap(data[year]);
+
+						out += '<ul style="list-style: none;">';
+						for (var r = 0; r < rows.length; r++) {
+							out += '<li style="padding:0.3em;">';
+							out += '<a href="./?cluster=' + encodeURIComponent(rows[r].id) + '">';
+							out += rows[r].html;
+							out += '</a>';
+							if (rows[r].entry.cluster_size > 1) {
+								out += ' <strong>(' + rows[r].entry.cluster_size + ' records)</strong>';
 							}
-							html += '</li>';
+							out += '</li>';
 						}
-						html += '</ul>';
+						out += '</ul>';
 
-					}
-
-					document.getElementById("works").innerHTML = html;
+						return out;
+					}, function(year) {
+						return Object.keys(data[year]).length;
+					});
 				});
 		});
 		});

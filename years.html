@@ -8,6 +8,7 @@
 	<script>
 		const Cite = require('citation-js')
 	</script>
+	<script src="js/citations.js"></script>
 	
 </head>
 <body>
@@ -133,17 +134,17 @@
 					for (var page in data) {
 						html += '<h4>Page: ' + escapeHtml(page) + '</h4>';
 
-						html += '<ul style="list-style: none;">';
-						for (var i in data[page]) {
-							var entry = data[page][i];
-							var citation = new Cite(entry.csl);
+						// One citation-js call per page group; see js/citations.js.
+						var rows = formatEntryMap(data[page]);
 
+						html += '<ul style="list-style: none;">';
+						for (var r = 0; r < rows.length; r++) {
 							html += '<li style="padding:0.3em;">';
-							html += '<a href="./?cluster=' + encodeURIComponent(i) + '">';
-							html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
+							html += '<a href="./?cluster=' + encodeURIComponent(rows[r].id) + '">';
+							html += rows[r].html;
 							html += '</a>';
-							if (entry.cluster_size > 1) {
-								html += ' <strong>(' + entry.cluster_size + ' records)</strong>';
+							if (rows[r].entry.cluster_size > 1) {
+								html += ' <strong>(' + rows[r].entry.cluster_size + ' records)</strong>';
 							}
 							html += '</li>';
 						}

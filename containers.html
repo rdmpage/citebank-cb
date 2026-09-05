@@ -54,7 +54,8 @@
 	<script>
 		const Cite = require('citation-js')
 	</script>
-	
+	<script src="js/citations.js"></script>
+
 </head>
 <body>
 
@@ -101,6 +102,86 @@
 			+ '<a href="' + base + '&format=ris">RIS</a> &middot; '
 			+ '<a href="' + base + '&format=bibtex">BibTeX</a> &middot; '
 			+ '<a href="' + base + '&format=csl">CSL-JSON</a></p>';
+	}
+
+	// Year picker, shown only for containers the API will not return in one
+	// request (Zootaxa alone is ~48,000 works). Links keep the current cid/title
+	// and just swap the year.
+	function yearIndexHtml(index, selected) {
+		var html = '<p style="font-size:0.85em;color:#444;margin:0.5em 0 0.3em;">'
+			+ Number(index.total).toLocaleString() + ' works in total &mdash; showing one year at a time.</p>';
+
+		html += '<ul style="list-style:none;padding:0;margin:0 0 1em;">';
+
+		for (var y in index.years) {
+			var params = new URLSearchParams(window.location.search);
+			params.set('year', y);
+
+			html += '<li style="display:inline-block;padding:0.15em 0.55em 0.15em 0;white-space:nowrap;">';
+			if (String(y) === String(selected)) {
+				html += '<strong>' + escapeHtml(y) + '</strong>';
+			} else {
+				html += '<a href="?' + params.toString() + '">' + escapeHtml(y) + '</a>';
+			}
+			html += ' <span style="color:#999;font-size:0.85em;">' + index.years[y] + '</span></li>';
+		}
+
+		html += '</ul>';
+		return html;
+	}
+
+	function fetchWorks(url, heading, metaHtml) {
+		document.getElementById("works").innerHTML =
+			"<h3>" + heading + "</h3>" + metaHtml + "<p style=\"color:#999;\">Loading&hellip;</p>";
+
+		fetch(url).then(function(response) {
+			if (response.status != 200) {
+				document.getElementById("works").innerHTML =
+					"<h3>" + heading + "</h3>" + metaHtml + "<p>No works found.</p>";
+				return;
+			}
+			response.json().then(function(data) {
+				render_works(heading, metaHtml, data);
+			});
+		});
+	}
+
+	// Ask for per-year counts first (a cheap reduce query) so we know whether the
+	// whole container can be fetched at once. Small containers behave exactly as
+	// before: one request, no year picker. metaHtml must not already contain
+	// export links -- they are added here so they match what is on screen.
+	function loadWorks(base, heading, metaHtml) {
+		var wanted = urlParams.get('year');
+
+		fetch(base + '&years').then(function(response) {
+			return response.status === 200 ? response.json() : null;
+		}).then(function(index) {
+			if (!index || !index.years) {
+				document.getElementById("works").innerHTML =
+					"<h3>" + heading + "</h3>" + exportLinks(base) + metaHtml + "<p>No works found.</p>";
+				return;
+			}
+
+			if (index.complete_fetch_allowed && !wanted) {
+				fetchWorks(base, heading, exportLinks(base) + metaHtml);
+				return;
+			}
+
+			// Default to the best-covered year rather than the most recent one:
+			// coverage is patchy at the edges (Zootaxa's latest year holds 4 works
+			// against a peak of ~4,300), so the newest year gives a misleading
+			// first impression of what is in the container.
+			var years = Object.keys(index.years);
+			var year  = years[0];
+			for (var i = 1; i < years.length; i++) {
+				if (index.years[years[i]] > index.years[year]) year = years[i];
+			}
+			if (wanted && index.years[wanted] !== undefined) year = wanted;
+
+			var url = base + '&year=' + encodeURIComponent(year);
+
+			fetchWorks(url, heading, exportLinks(url) + metaHtml + yearIndexHtml(index, year));
+		});
 	}
 
 	function list_containers(letter) {
@@ -238,13 +319,59 @@
 		return html;
 	}
 
+	// One volume's worth of articles: heading, coverage ruler, page-ordered list.
+	function render_volume(block) {
+		var group = block.group;
+
+		var html = '';
+
+		if (block.yearHeading) {
+			html += '<h4>' + block.yearHeading + '</h4>';
+		}
+
+		html += '<h5 style="margin:0.5em 0 0.2em;color:#444;">'
+			+ (block.vol === Infinity ? '(no volume)' : 'Volume ' + block.vol) + '</h5>';
+
+		// Coverage ruler from this volume's page ranges.
+		var ranges = [];
+		for (var n = 0; n < group.length; n++) {
+			var r = parsePages(group[n].e.csl ? group[n].e.csl.page : null);
+			if (r) ranges.push(r);
+		}
+		html += coverageBar(ranges);
+
+		// One citation-js call per volume; see js/citations.js.
+		var formatted = formatCitations(group.map(function(g) {
+			return { id: g.id, csl: g.e.csl };
+		}));
+
+		html += '<ul style="list-style: none;">';
+		for (var j = 0; j < group.length; j++) {
+			var entry = group[j].e;
+
+			html += '<li style="padding:0.3em;">';
+			html += '<a href="./?cluster=' + encodeURIComponent(group[j].id) + '" style="display:inline;">';
+			html += formatted[j];
+			html += '</a>';
+			if (entry.cluster_size > 1) {
+				html += ' <strong>(' + entry.cluster_size + ' records)</strong>';
+			}
+			html += '</li>';
+		}
+		html += '</ul>';
+
+		return html;
+	}
+
 	function render_works(heading, metaHtml, data) {
-		var html = "<h3>" + heading + "</h3>";
-		if (metaHtml) html += metaHtml;
+		var works = document.getElementById("works");
+		works.innerHTML = "<h3>" + heading + "</h3>" + (metaHtml || '');
+
+		// Flatten to volume blocks in display order, so rendering can be spread
+		// over several turns of the event loop (see renderProgressively).
+		var blocks = [];
 
 		for (var year in data) {
-			html += '<h4>' + year + '</h4>';
-
 			// Group this year's articles by (normalised) volume. Pagination resets
 			// per volume, so each volume gets its own ruler and page-ordered list.
 			var byVol = {};
@@ -260,37 +387,18 @@
 				var group = byVol[volKeys[vi]];
 				group.sort(function(a, b) { return firstPage(a.e.csl) - firstPage(b.e.csl); });
 
-				html += '<h5 style="margin:0.5em 0 0.2em;color:#444;">'
-					+ (volKeys[vi] === Infinity ? '(no volume)' : 'Volume ' + volKeys[vi]) + '</h5>';
-
-				// Coverage ruler from this volume's page ranges.
-				var ranges = [];
-				for (var n = 0; n < group.length; n++) {
-					var r = parsePages(group[n].e.csl ? group[n].e.csl.page : null);
-					if (r) ranges.push(r);
-				}
-				html += coverageBar(ranges);
-
-				html += '<ul style="list-style: none;">';
-				for (var j = 0; j < group.length; j++) {
-					var i = group[j].id;
-					var entry = group[j].e;
-					var citation = new Cite(entry.csl);
-
-					html += '<li style="padding:0.3em;">';
-					html += '<a href="./?cluster=' + encodeURIComponent(i) + '" style="display:inline;">';
-					html += citation.format('bibliography', {format: 'html', template: 'apa', lang: 'en' });
-					html += '</a>';
-					if (entry.cluster_size > 1) {
-						html += ' <strong>(' + entry.cluster_size + ' records)</strong>';
-					}
-					html += '</li>';
-				}
-				html += '</ul>';
+				blocks.push({
+					// Only the first volume of a year carries the year heading.
+					yearHeading: (vi === 0) ? year : null,
+					vol: volKeys[vi],
+					group: group
+				});
 			}
 		}
 
-		document.getElementById("works").innerHTML = html;
+		renderProgressively(works, blocks, render_volume, function(b) {
+			return b.group.length;
+		});
 	}
 
 	var title = urlParams.get('title');
@@ -308,7 +416,9 @@
 			var container = (meta && meta[0]) || {};
 			var heading = container.name ? escapeHtml(container.name) : escapeHtml(cid);
 
-			var metaHtml = exportLinks("api.php?container&cid=" + encodeURIComponent(cid));
+			// Export links are added by loadWorks, so they can be scoped to the
+			// year actually on screen.
+			var metaHtml = '';
 			if (env.dev) {
 				metaHtml += '<p style="font-size:0.85em;"><a href="biostor.html?cid='
 					+ encodeURIComponent(cid) + '">&#9638; BioStor coverage</a></p>';
@@ -323,15 +433,7 @@
 				metaHtml += '</ul></details>';
 			}
 
-			fetch("api.php?container&cid=" + encodeURIComponent(cid)).then(function(response) {
-				if (response.status != 200) {
-					document.getElementById("works").innerHTML = "<h3>" + heading + "</h3>" + metaHtml + "<p>No works found.</p>";
-					return;
-				}
-				response.json().then(function(data) {
-					render_works(heading, metaHtml, data);
-				});
-			});
+			loadWorks("api.php?container&cid=" + encodeURIComponent(cid), heading, metaHtml);
 		});
 		});
 
@@ -350,18 +452,7 @@
 			} else {
 				metaHtml = '<p style="color:#999;">Not part of any container cluster.</p>';
 			}
-			metaHtml += exportLinks("api.php?container&title=" + encodeURIComponent(title));
-
-			fetch("api.php?container&title=" + encodeURIComponent(title)).then(function(response) {
-				if (response.status != 200) {
-					document.getElementById("works").innerHTML =
-						"<h3>" + escapeHtml(title) + "</h3>" + metaHtml + "<p>No works found.</p>";
-					return;
-				}
-				response.json().then(function(data) {
-					render_works(escapeHtml(title), metaHtml, data);
-				});
-			});
+			loadWorks("api.php?container&title=" + encodeURIComponent(title), escapeHtml(title), metaHtml);
 		});
 
 	} else {

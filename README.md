@@ -8,6 +8,29 @@ Hence in CiteBank we build our own database. Potential sources include CrossRef 
 
 The data is stored in CouchDB, which is a JSON-native document database. 
 
+## Running locally
+
+Three things need to be up:
+
+1. **CouchDB** — start Apache CouchDB.app. Check with `curl http://127.0.0.1:5984/`.
+2. **Nouveau** — the Lucene-based full-text service that backs search. It ships
+   inside the CouchDB bundle but is a *separate Java process*, and the CouchDB
+   menu-bar item does not start it:
+
+   ```
+   ./start-nouveau.sh
+   ```
+
+   Without it, browsing by container, author and year all work, but `?q=`
+   searches return `503 Search is unavailable`. The index persists between runs
+   under `data/nouveau` in the bundle, so restarting is quick.
+3. **A web server** pointed at this directory. With the stock Homebrew Apache
+   the site is at <http://localhost/citebank-cb/>.
+
+Credentials come from `env.php` (gitignored — copy `env-template.php`).
+
+Calling `api.php` with no parameters returns a list of the available endpoints.
+
 
 
 ## Data format
@@ -58,7 +81,7 @@ Given that the same reference may be found in multiple sources, CiteBank include
 ## Running automated clustering script locally
 
 ```
-do php /Users/rpage/Sites/citebank-cb/worker.php; sleep 1; done
+while true; do php /Users/rpage/Sites/citebank-cb/worker.php; sleep 1; done
 ```
 
 ## Clustering cases to look at

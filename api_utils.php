@@ -128,9 +128,17 @@ function api_output($obj, $callback = '', $status = 400)
 		case 410:
 			header('HTTP/1.1 410 Gone');
 			break;
-			
+
+		case 413:
+			header('HTTP/1.1 413 Payload Too Large');
+			break;
+
 		case 500:
 			header('HTTP/1.1 500 Internal Server Error');
+			break;
+
+		case 503:
+			header('HTTP/1.1 503 Service Unavailable');
 			break;
 			 			
 		default:

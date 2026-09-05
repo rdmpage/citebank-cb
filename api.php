@@ -277,7 +277,60 @@ function simplify_csl($csl)
 }
 
 //--------------------------------------------------------------------------------------------------
-function get_works_by_container($container)
+// A container this size cannot be fetched in one go: Zootaxa alone is ~48,000
+// works, which is 61MB of CouchDB response before json_decode() expands it, and
+// far more rows than the page can usefully render. Above this threshold callers
+// are expected to ask for a single year at a time (see get_container_year_counts).
+define('CONTAINER_WORKS_MAX', 5000);
+
+//--------------------------------------------------------------------------------------------------
+// Number of works per year for one or more raw container titles, summed across
+// them. Uses the reduce side of container-year-page, so this stays cheap even
+// for the largest containers and lets the caller decide whether it can afford
+// to fetch the works themselves.
+function get_container_year_counts($variants)
+{
+	global $config;
+	global $couch;
+
+	$counts = array();
+
+	foreach ((array)$variants as $variant)
+	{
+		$parameters = array(
+			'startkey'		=> json_encode(array($variant, 0), JSON_UNESCAPED_UNICODE),
+			'endkey'		=> json_encode(array($variant, 2030, new stdclass), JSON_UNESCAPED_UNICODE),
+			'reduce'		=> 'true',
+			'group_level'	=> 2
+		);
+
+		$url = '_design/interface/_view/container-year-page?' . http_build_query($parameters);
+
+		$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
+
+		$response_obj = json_decode($resp);
+
+		if (!$response_obj || !isset($response_obj->rows))
+		{
+			continue;
+		}
+
+		foreach ($response_obj->rows as $row)
+		{
+			$year = $row->key[1];
+			$counts[$year] = ($counts[$year] ?? 0) + $row->value;
+		}
+	}
+
+	ksort($counts);
+
+	return $counts;
+}
+
+//--------------------------------------------------------------------------------------------------
+// $year restricts the result to a single publication year; without it every year
+// is returned, which is only safe for containers under CONTAINER_WORKS_MAX.
+function get_works_by_container($container, $year = null)
 {
 	global $config;
 	global $couch;
@@ -286,8 +339,16 @@ function get_works_by_container($container)
 	$counts = array();
 	$kept_is_rep = array();
 
-	$startkey = array($container, 0);
-	$endkey = array($container, 2030, new stdclass);
+	if ($year === null)
+	{
+		$startkey = array($container, 0);
+		$endkey = array($container, 2030, new stdclass);
+	}
+	else
+	{
+		$startkey = array($container, (Integer)$year);
+		$endkey = array($container, (Integer)$year, new stdclass);
+	}
 
 	$parameters = array(
 		'startkey' 		=> json_encode($startkey, JSON_UNESCAPED_UNICODE),
@@ -377,18 +438,38 @@ function get_container_for_variant($variant)
 }
 
 //--------------------------------------------------------------------------------------------------
-// Pull works across every variant spelling of a single canonical container.
-// Returns the same {year → {cluster_id → {csl, cluster_size}}} envelope as
-// get_works_by_container; cluster_size is the true count across all variants.
-function get_works_by_container_id($cid)
+// The raw container titles clustered under a container doc, or an empty array
+// if $cid is not a container doc.
+function get_container_variants($cid)
 {
 	global $config;
 	global $couch;
 
-	// Fetch the container doc to read its variants list.
 	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . urlencode($cid));
+
 	$container = json_decode($resp);
+
 	if (!$container || !isset($container->variants) || !is_array($container->variants))
+	{
+		return array();
+	}
+
+	return $container->variants;
+}
+
+//--------------------------------------------------------------------------------------------------
+// Pull works across every variant spelling of a single canonical container.
+// Returns the same {year → {cluster_id → {csl, cluster_size}}} envelope as
+// get_works_by_container; cluster_size is the true count across all variants.
+// $year restricts the result to a single publication year; see get_works_by_container.
+function get_works_by_container_id($cid, $year = null)
+{
+	global $config;
+	global $couch;
+
+	$variants = get_container_variants($cid);
+
+	if (count($variants) == 0)
 	{
 		return array();
 	}
@@ -397,10 +478,18 @@ function get_works_by_container_id($cid)
 	$counts      = array();
 	$kept_is_rep = array();
 
-	foreach ($container->variants as $variant)
+	foreach ($variants as $variant)
 	{
-		$startkey = array($variant, 0);
-		$endkey   = array($variant, 2030, new stdclass);
+		if ($year === null)
+		{
+			$startkey = array($variant, 0);
+			$endkey   = array($variant, 2030, new stdclass);
+		}
+		else
+		{
+			$startkey = array($variant, (Integer)$year);
+			$endkey   = array($variant, (Integer)$year, new stdclass);
+		}
 
 		$parameters = array(
 			'startkey'     => json_encode($startkey, JSON_UNESCAPED_UNICODE),
@@ -616,11 +705,11 @@ function display_containers_by_letter($letter, $callback = '')
 }
 
 //--------------------------------------------------------------------------------------------------
-function display_works_by_container_id($cid, $callback = '')
+function display_works_by_container_id($cid, $callback = '', $year = null)
 {
 	$status = 404;
 
-	$result = get_works_by_container_id($cid);
+	$result = get_works_by_container_id($cid, $year);
 
 	if (count($result) > 0)
 	{
@@ -628,6 +717,40 @@ function display_works_by_container_id($cid, $callback = '')
 	}
 
 	api_output($result, $callback, $status);
+}
+
+//--------------------------------------------------------------------------------------------------
+// Works per year for a container, plus whether the whole container is small
+// enough to be fetched in one request. The UI asks for this first so it knows
+// whether to load everything or offer a year at a time.
+function display_container_year_counts($variants, $callback = '')
+{
+	$counts = get_container_year_counts($variants);
+
+	$obj = new stdclass;
+	$obj->years = new stdclass;
+
+	$total = 0;
+
+	foreach ($counts as $year => $count)
+	{
+		if (!is_plausible_year($year))
+		{
+			continue;
+		}
+
+		$obj->years->{$year} = $count;
+		$total += $count;
+	}
+
+	$obj->total = $total;
+	$obj->max   = CONTAINER_WORKS_MAX;
+
+	// When false the caller must supply &year=<y> rather than asking for
+	// every work at once.
+	$obj->complete_fetch_allowed = ($total <= CONTAINER_WORKS_MAX);
+
+	api_output($obj, $callback, count($counts) > 0 ? 200 : 404);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -646,11 +769,11 @@ function display_container_for_variant($variant, $callback = '')
 }
 
 //--------------------------------------------------------------------------------------------------
-function display_works_by_container($container, $callback = '')
+function display_works_by_container($container, $callback = '', $year = null)
 {
 	$status = 404;
 
-	$result = get_works_by_container($container);
+	$result = get_works_by_container($container, $year);
 
 	if (count($result) > 0)
 	{
@@ -658,6 +781,34 @@ function display_works_by_container($container, $callback = '')
 	}
 
 	api_output($result, $callback, $status);
+}
+
+//--------------------------------------------------------------------------------------------------
+// Can every work in these container titles be returned in a single response?
+// $counts is filled in with the per-year counts so the caller can reuse them
+// without repeating the query.
+function container_is_fetchable($variants, &$counts = null)
+{
+	$counts = get_container_year_counts($variants);
+
+	return (array_sum($counts) <= CONTAINER_WORKS_MAX);
+}
+
+//--------------------------------------------------------------------------------------------------
+// Refuse an unbounded fetch that we know would exhaust memory, and tell the
+// caller how to ask for the same data a year at a time. $counts comes from
+// container_is_fetchable.
+function refuse_oversized_container($counts, $callback = '')
+{
+	$obj = new stdclass;
+	$obj->status = 413;
+	$obj->error  = 'This container holds ' . array_sum($counts) . ' works, more than the '
+		. CONTAINER_WORKS_MAX . ' that can be returned in one request. Add &year=<year>, '
+		. 'or use &years to list the available years.';
+	$obj->total  = array_sum($counts);
+	$obj->max    = CONTAINER_WORKS_MAX;
+
+	api_output($obj, $callback, 413);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -742,32 +893,59 @@ function get_volumes_by_year($year)
 }
 
 //--------------------------------------------------------------------------------------------------
+// Is this a year we are prepared to show in the year browser?
+//
+// The _design/interface/years view does parseInt(...) on whatever is in
+// doc.issued, so malformed dates arrive here as keys such as "" (NaN), 0, 13,
+// 2102 and 18311829 (two years run together). Around 2,500 of ~954,000 records
+// are affected, but because those keys sort first they dominate the top of the
+// year list. Filtering here rather than in the view avoids reindexing the whole
+// database; the underlying records are untouched and still reachable by other
+// routes.
+function is_plausible_year($year)
+{
+	if (!preg_match('/^\d{4}$/', (string)$year))
+	{
+		return false;
+	}
+
+	// 1500 is comfortably below the earliest genuine imprint we hold (1525);
+	// everything under it is one-off parsing noise.
+	return ((Integer)$year >= 1500) && ((Integer)$year <= ((Integer)date('Y') + 1));
+}
+
+//--------------------------------------------------------------------------------------------------
 function get_year_list()
 {
 	global $config;
 	global $couch;
-	
+
 	$result = array();
-	
+
 	$parameters = array(
 		'reduce' 		=> 'true',
 		'group_level'	=> 2
 	);
 
 	$url = '_design/interface/_view/years?' . http_build_query($parameters);
-	
+
 	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
-	
+
 	$response_obj = json_decode($resp);
-	
+
 	if ($response_obj)
 	{
 		foreach ($response_obj->rows as $row)
 		{
+			if (!is_plausible_year($row->key))
+			{
+				continue;
+			}
+
 			$result[$row->key] = $row->value;
 		}
 	}
-	
+
 	return $result;
 }
 
@@ -886,9 +1064,46 @@ function display_works_by_volume_by_year($year, $volume, $callback = '')
 
 
 //--------------------------------------------------------------------------------------------------
-function default_display()
+// Shown when the API is called with no parameters (status 200, a self-describing
+// index) or with parameters we don't recognise (status 400). Both cases used to
+// emit a bare "hi", which told a caller nothing about what the API accepts.
+function default_display($callback = '', $status = 200)
 {
-	echo "hi";
+	$obj = new stdclass;
+
+	$obj->name = 'CiteBank API';
+	$obj->description = 'Bibliographic records for the taxonomic literature, stored as CSL-JSON.';
+
+	$obj->endpoints = array(
+		'?id=<id>'					=> 'One record by id. Add &format=ris|bibtex|csl to export.',
+		'?doi=<doi>'				=> 'Records matching a DOI.',
+		'?ids=<id,id,...>'			=> 'Several records. Add &consensus=1 for a merged record.',
+		'?clusterid=<id>'			=> 'Consensus record for a cluster.',
+		'?q=<text>'					=> 'Full-text title search. Add &limit=<n>.',
+		'?container&first'			=> 'First letters of container (journal) titles.',
+		'?container&letter=<x>'		=> 'Containers starting with one letter.',
+		'?container&cid=<id>'		=> 'Works in a container cluster. Exportable.',
+		'?container&title=<title>'	=> 'Works in an exact container title. Exportable.',
+		'?container&variant=<title>'=> 'Which container cluster holds this exact spelling.',
+		'?author&first'				=> 'First letters of author family names.',
+		'?author&letter=<x>'		=> 'Author family names starting with one letter.',
+		'?author&family=<name>'		=> 'Works by an author family name. Exportable.',
+		'?dates'					=> 'Publication years and the number of works in each.',
+		'?hash&year=<y>'			=> 'Volumes for a year; add &volume=<v> for works.',
+	);
+
+	$obj->parameters = array(
+		'callback'	=> 'Wrap the response as JSONP.',
+		'format'	=> 'ris, bibtex or csl on record endpoints; triggers a file download.',
+		'limit'		=> 'Maximum number of results (search).',
+	);
+
+	if ($status != 200)
+	{
+		$obj->error = 'Unrecognised request. See "endpoints" for what this API accepts.';
+	}
+
+	api_output($obj, $callback, $status);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1157,6 +1372,24 @@ function display_search($query, $limit = 20, $callback)
 
 	$resp = $couch->send("GET", "/" . $config['couchdb_options']['database'] . "/" . $url);
 	$resp_obj = json_decode($resp);
+
+	// Full-text search is served by Nouveau, which is a separate Java process
+	// alongside CouchDB. If it is not running, CouchDB answers
+	// {"error":"service unavailable"} and there is no hits array. Say so plainly
+	// rather than emitting PHP notices and an empty result, which looks like
+	// "no matches" and hides the real problem. See README for starting Nouveau.
+	if (!$resp_obj || !isset($resp_obj->hits) || !is_array($resp_obj->hits))
+	{
+		$err = new stdclass;
+		$err->error = 'Search is unavailable.';
+
+		if ($resp_obj && isset($resp_obj->reason))
+		{
+			$err->reason = $resp_obj->reason;
+		}
+
+		api_output($err, $callback, 503);
+	}
 
 	$clusters  = array();
 	$reps_seen = array();
@@ -1434,7 +1667,7 @@ function main()
 	// If no query parameters 
 	if (count($_GET) == 0 && $post_content == '')
 	{
-		default_display();
+		default_display('', 200);
 		exit(0);
 	}
 	
@@ -1651,16 +1884,29 @@ function main()
 				$handled = true;
 			}	
 			
+			// Optional single publication year, used to keep large containers
+			// within a fetchable size.
+			$container_year = isset($_GET['year']) ? $_GET['year'] : null;
+
 			if (isset($_GET['title']))
 			{
 				$title = $_GET['title'];
-				if (is_export_format($format))
+
+				if (isset($_GET['years']))
 				{
-					export_works(get_works_by_container($title), $format, $title);
+					display_container_year_counts(array($title), $callback);
+				}
+				elseif ($container_year === null && !container_is_fetchable(array($title), $counts))
+				{
+					refuse_oversized_container($counts, $callback);
+				}
+				elseif (is_export_format($format))
+				{
+					export_works(get_works_by_container($title, $container_year), $format, $title);
 				}
 				else
 				{
-					display_works_by_container($title, $callback);
+					display_works_by_container($title, $callback, $container_year);
 				}
 				$handled = true;
 			}
@@ -1668,13 +1914,22 @@ function main()
 			if (isset($_GET['cid']))
 			{
 				$cid = $_GET['cid'];
-				if (is_export_format($format))
+
+				if (isset($_GET['years']))
 				{
-					export_works(get_works_by_container_id($cid), $format, preg_replace('/^container:/', '', $cid));
+					display_container_year_counts(get_container_variants($cid), $callback);
+				}
+				elseif ($container_year === null && !container_is_fetchable(get_container_variants($cid), $counts))
+				{
+					refuse_oversized_container($counts, $callback);
+				}
+				elseif (is_export_format($format))
+				{
+					export_works(get_works_by_container_id($cid, $container_year), $format, preg_replace('/^container:/', '', $cid));
 				}
 				else
 				{
-					display_works_by_container_id($cid, $callback);
+					display_works_by_container_id($cid, $callback, $container_year);
 				}
 				$handled = true;
 			}
@@ -1775,7 +2030,7 @@ function main()
 	
 	if (!$handled)
 	{
-		default_display();
+		default_display($callback, 400);
 	}
 
 }

@@ -41,8 +41,14 @@
 </form>
 
 <div id = "output"></div>
-<h2>Debug output</h2>
-<div id = "debug" class="code"></div>
+
+<!-- The underlying CSL-JSON. Useful when explaining what a record actually is,
+     but noise the rest of the time, so it stays collapsed and is only revealed
+     once there is something in it. -->
+<details id = "debug-panel" style="margin-top:1.5em;" hidden>
+	<summary style="cursor:pointer;color:#666;">Record JSON</summary>
+	<div id = "debug" class="code"></div>
+</details>
 
 <script>
 
@@ -287,6 +293,21 @@ function cslToOpenURL(csl) {
 		var url = "api.php?q=" + encodeURIComponent(qParam);
 
 		fetch(url).then(function(response) {
+			// 503 means the Nouveau search service is down, which is not the same
+			// thing as the query matching nothing -- don't report it as such.
+			if (response.status == 503) {
+				response.json().then(function(err) {
+					document.getElementById("output").innerHTML =
+						'<p><strong>Search is unavailable.</strong> The Nouveau full-text service '
+						+ 'is not responding; browsing by container, author and year still works.'
+						+ (err && err.reason ? ' <span style="color:#888;">(' + escapeHtml(err.reason) + ')</span>' : '')
+						+ '</p>';
+				}).catch(function() {
+					document.getElementById("output").innerHTML = '<p><strong>Search is unavailable.</strong></p>';
+				});
+				return;
+			}
+
 			if (response.status != 200) {
 				document.getElementById("output").innerHTML = '<p>No results for <em>' + escapeHtml(qParam) + '</em>.</p>';
 				return;
@@ -548,8 +569,9 @@ function cslToOpenURL(csl) {
 					get_cluster(data[0].citebank.cluster);*/
 					
 					document.getElementById("debug").innerHTML = JSON.stringify(data, null, 2);
-					
-					
+					document.getElementById("debug-panel").hidden = false;
+
+
 				});
 		});
 	}	
