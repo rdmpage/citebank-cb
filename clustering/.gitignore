@@ -1,4 +1,11 @@
-# Generated clustering artifacts — regenerable, large; keep out of git.
+# Generated clustering artifacts — large; keep the uncompressed copies out of git.
+#
+# These are only regenerable from container.tsv, which is itself only
+# regenerable from a populated works database (see ../get_view.php). So the end
+# product of the pipeline, container_docs.json, is NOT safely reproducible once
+# the database is wiped or rebuilt from different sources -- a gzipped copy is
+# committed alongside as container_docs.json.gz, and that is the file to reload
+# from (clustering/couch_push.php) when seeding a new database.
 containers.db
 containers.db-shm
 containers.db-wal

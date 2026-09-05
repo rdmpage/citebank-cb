@@ -20,12 +20,19 @@ dedup) clustering see [`DESIGN.md`](DESIGN.md) and
 ## Pipeline at a glance
 
 ```
-container.tsv ──► SQLite clustering ──► container_docs.json ──► CouchDB container docs
-(146k raw names)   (clustering/)         (couch_export.php)      (_design/container)
-                                                                      │
-                                          containers.html ◄───────────┤  browse
-                                          worker.php --cid ◄───────────┘  cluster works per journal
+works in CouchDB ──► container.tsv ──► SQLite clustering ──► container_docs.json ──► CouchDB container docs
+(_design/source,     (146k raw names)   (clustering/)         (couch_export.php)      (_design/container)
+ get_view.php)                                                        │                     │
+                                                                      │                     │
+                                          committed as ◄──────────────┘                     │
+                                          container_docs.json.gz                            │
+                                                                                            │
+                                          containers.html ◄─────────────────────────────────┤  browse
+                                          worker.php --cid ◄─────────────────────────────────┘  cluster works per journal
 ```
+
+Note the whole chain hangs off a populated works database. See
+[Restoring into an empty or rebuilt database](#restoring-into-an-empty-or-rebuilt-database).
 
 ---
 
@@ -118,6 +125,39 @@ php worker.php --cid container:novititates-zoologicae --once   # one full pass o
 2. Delete the previous non-curated generation via the `manage` view, then
    `php couch_push.php`. Curated docs survive untouched.
 
+## Restoring into an empty or rebuilt database
+
+The clustering output is committed as `clustering/container_docs.json.gz`
+(47,412 docs, 146,222 variant spellings, `cluster_run` 20260614). To seed a
+fresh database with it:
+
+```
+# 1. the generated clusters
+gunzip -c clustering/container_docs.json.gz > clustering/container_docs.json
+php clustering/couch_push.php
+
+# 2. the hand-curated docs, which couch_export.php deliberately leaves out
+curl -X PUT $COUCH/citebank/container:acta-arachnologica \
+     -H 'Content-Type: application/json' --data-binary @acta-arachnologica.json
+
+# 3. the design documents (couchdb/*.js), including _design/source
+```
+
+The export contains 0 curated docs by design — `couch_export.php` skips any
+cluster a curated doc owns, so curated docs have to be restored from their own
+files. At present there is exactly one (`acta-arachnologica.json`).
+
+This works on an empty database: `variants` are raw title strings, so the docs
+resolve any work whose `container-title` matches, whenever those works arrive.
+
+**Why it is committed rather than regenerated.** The pipeline runs
+`works DB → get_view.php → container.tsv → clustering/ → container_docs.json`.
+Every step upstream of the output depends on a populated works database, so
+wiping or re-sourcing the database makes the clustering unreproducible — the
+~146k raw spellings it was derived from are gone with it. The gzipped output is
+therefore the durable artifact. `container.tsv` is *not* committed; archive it
+separately if you want to be able to re-tune the algorithm after a wipe.
+
 ## Known issues / review backlog
 
 - **Under-merge** — some journals split into several clusters (e.g. *Acta
@@ -143,10 +183,13 @@ php worker.php --cid container:novititates-zoologicae --once   # one full pass o
 
 | path | role |
 |---|---|
+| `couchdb/source.js` | `_design/source` — the view `get_view.php` dumps `container.tsv` from. Kept in its own design document so regenerating the container docs cannot clobber the input to regenerating them |
+| `get_view.php` | `_design/source` → `container.tsv` (pipeline input) |
 | `clustering/` | offline SQLite clustering (import, keys, passes, exports) — see its README |
 | `clustering/couch_export.php` | clusters → `container_docs.json` (curation-aware, dry run) |
 | `clustering/couch_push.php` | bulk `_bulk_docs` load into CouchDB |
-| `couchdb/container.js` | `_design/container` views |
+| `clustering/container_docs.json.gz` | committed clustering output — the durable artifact; reload with `couch_push.php` |
+| `couchdb/container.js` | `_design/container` views (clustering *output*) |
 | `acta-arachnologica.json` | hand-built container-doc template (`curated:true`) |
 | `api.php` | container API routes (`get_containers_*`, `get_container_for_variant`, `get_works_by_container_id`) |
 | `containers.html` | browsing UI |
