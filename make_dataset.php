@@ -62,8 +62,9 @@ error_reporting(E_ALL);
 
 require_once(dirname(__FILE__) . '/couchsimple.php');
 require_once(dirname(__FILE__) . '/csl_features.php');
+require_once(dirname(__FILE__) . '/label_page.php');
 
-$opt = getopt('', array('labels::', 'doi', 'balance', 'limit::', 'out::', 'pairs::', 'test-fraction::'));
+$opt = getopt('', array('labels::', 'doi', 'balance', 'review', 'review-n::', 'limit::', 'out::', 'pairs::', 'test-fraction::'));
 
 $labels_file = isset($opt['labels']) ? $opt['labels'] : dirname(__FILE__) . '/labels-done.tsv';
 $pairs_file  = isset($opt['pairs'])  ? $opt['pairs']  : dirname(__FILE__) . '/pairs.jsonl';
@@ -92,7 +93,7 @@ define('DOI_MAX_AGREEING_FIELDS', 3);
 //----------------------------------------------------------------------------------------
 $examples = array();   // key "a|b" => [a, b, label(bool), provenance]
 
-function add_example(&$examples, $a, $b, $label, $provenance)
+function add_example(&$examples, $a, $b, $label, $provenance, $extra = array())
 {
 	// One row per unordered pair; a human label always wins over a derived one.
 	$key = ($a < $b) ? "$a|$b" : "$b|$a";
@@ -102,9 +103,9 @@ function add_example(&$examples, $a, $b, $label, $provenance)
 		return;
 	}
 
-	$examples[$key] = array(
+	$examples[$key] = array_merge(array(
 		'a' => $a, 'b' => $b, 'label' => $label, 'provenance' => $provenance
-	);
+	), $extra);
 }
 
 //----------------------------------------------------------------------------------------
@@ -134,7 +135,10 @@ if (file_exists($labels_file))
 		}
 
 		add_example($examples, $row[$col['a_id']], $row[$col['b_id']],
-			($label === 'same'), 'human');
+			($label === 'same'), 'human', array(
+				'a_text' => isset($row[$col['a_text']]) ? $row[$col['a_text']] : '',
+				'b_text' => isset($row[$col['b_text']]) ? $row[$col['b_text']] : '',
+			));
 		$n_human++;
 	}
 	fclose($fh);
@@ -210,7 +214,10 @@ if ($use_doi)
 			{
 				continue;   // probably a wrong DOI rather than a hard positive
 			}
-			add_example($examples, $r['a'], $r['b'], true, 'doi');
+			add_example($examples, $r['a'], $r['b'], true, 'doi', array(
+				'a_text' => $r['a_text'], 'b_text' => $r['b_text'],
+				'edge' => $disagreeing, 'same_doi' => true,
+			));
 		}
 		else
 		{
@@ -218,7 +225,10 @@ if ($use_doi)
 			{
 				continue;   // probably one article registered twice
 			}
-			add_example($examples, $r['a'], $r['b'], false, 'doi');
+			add_example($examples, $r['a'], $r['b'], false, 'doi', array(
+				'a_text' => $r['a_text'], 'b_text' => $r['b_text'],
+				'edge' => $agreeing, 'same_doi' => false,
+			));
 		}
 
 		$n_doi++;
@@ -470,6 +480,104 @@ $readme = "# CiteBank citation-pair dataset\n\n"
 
 file_put_contents($out . '.README.md', $readme);
 
+//----------------------------------------------------------------------------------------
+// 6. Optional review page for the automatically derived labels.
+//
+// Reviewing these at random is a poor use of the time: most DOI-derived labels
+// are on pairs where every field agrees or nothing does, and those are never
+// wrong. The labels that are wrong sit at the thresholds -- a shared DOI with
+// two fields already disagreeing, or differing DOIs with three fields still
+// agreeing -- because that is exactly where the rule was cut. So the page leads
+// with those, and follows them with a random sample, which is the only part
+// that can give an unbiased estimate of how noisy the whole set is.
+//
+// The derived label is hidden until an answer is given. Showing it first mostly
+// measures willingness to agree with it.
+if (isset($opt['review']))
+{
+	$per = isset($opt['review-n']) ? (int)$opt['review-n'] : 120;
+
+	$pos_edge = array(); $neg_edge = array(); $rest = array();
+
+	foreach ($examples as $e)
+	{
+		if ($e['provenance'] !== 'doi' || !isset($e['edge']))
+		{
+			continue;
+		}
+
+		if ($e['same_doi'] && $e['edge'] >= DOI_MAX_DISAGREEING_FIELDS)
+		{
+			$pos_edge[] = $e;
+		}
+		elseif (!$e['same_doi'] && $e['edge'] >= DOI_MAX_AGREEING_FIELDS)
+		{
+			$neg_edge[] = $e;
+		}
+		else
+		{
+			$rest[] = $e;
+		}
+	}
+
+	// Deterministic shuffle, so the review set is reproducible.
+	$pick = function ($arr, $n)
+	{
+		usort($arr, function ($x, $y) { return strcmp(md5($x['a'] . $x['b']), md5($y['a'] . $y['b'])); });
+		return array_slice($arr, 0, $n);
+	};
+
+	$sections = array(
+		'labelled SAME, but two fields already disagree' => array(
+			$pick($pos_edge, $per), 'same',
+			'These share a DOI, so the rule called them the same work — but two of title, container, volume, page and year disagree.',
+			'This is where wrong DOIs show up. Excluded pairs one step further out include a moth sharing a DOI with a spider.'),
+		'labelled DIFFERENT, but three fields still agree' => array(
+			$pick($neg_edge, $per), 'different',
+			'These carry different DOIs, so the rule called them different works — but three of the five fields still agree.',
+			'This is where one article registered twice shows up: same title, journal and volume, two DOIs.'),
+		'random sample (for estimating the error rate)' => array(
+			$pick($rest, $per), null,
+			'A uniform random sample of everything else, which is mostly the easy middle.',
+			'Boring by design. It is the only part that gives an unbiased estimate of how noisy the derived labels are overall, so it is worth doing even though almost all of it will be correct.'),
+	);
+
+	$review_rows = array();
+	$notes = array();
+
+	foreach ($sections as $name => $spec)
+	{
+		list($items, $expected, $n1, $n2) = $spec;
+		$notes[$name] = array($n1, $n2);
+
+		foreach ($items as $e)
+		{
+			$review_rows[] = array(
+				'stratum'  => $name,
+				'question' => 'Is A the same work as B?',
+				'a_text'   => isset($e['a_text']) ? $e['a_text'] : $e['a'],
+				'b_text'   => isset($e['b_text']) ? $e['b_text'] : $e['b'],
+				'pairs'    => array(array($e['a'], $e['b'])),
+				'derived'  => $e['label'] ? 'same' : 'different',
+				'note'     => 'derived from DOI agreement',
+			);
+		}
+	}
+
+	file_put_contents($out . '.review.html', render_label_page($review_rows, array(
+		'title'   => 'Review the derived labels',
+		'intro'   => 'Judge each pair yourself, then the label the rule assigned is revealed. '
+		           . 'Keys: <b>s</b> same &middot; <b>d</b> different &middot; <b>u</b> unsure &middot; '
+		           . '<b>j</b>/<b>k</b> move. Disagreements are highlighted and counted at the bottom.',
+		'storage' => 'citebank-review-v1',
+		'review'  => true,
+		'notes'   => $notes,
+	)));
+
+	fwrite(STDERR, "review page     : " . number_format(count($review_rows)) . " pairs -> $out.review.html\n");
+}
+
+//----------------------------------------------------------------------------------------
 fwrite(STDERR, "\n");
 fwrite(STDERR, "train           : " . number_format($stats['train'][0]) . " same, "
 	. number_format($stats['train'][1]) . " different\n");
