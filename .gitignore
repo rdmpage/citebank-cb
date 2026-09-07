@@ -20,3 +20,7 @@ env.php
 # Regenerate with: php make_labelling_set.php
 /labels.tsv
 /labels.html
+
+# Train/test dataset, generated from pairs.jsonl (+ human labels if present).
+# Regenerate with: php make_dataset.php --doi --balance
+/dataset.*
