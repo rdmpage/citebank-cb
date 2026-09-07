@@ -15,3 +15,8 @@ env.php
 # The container clustering pipeline's input and output both live in clustering/
 # and are committed there, gzipped (container.tsv.gz, container_docs.json.gz).
 # See clustering/.gitignore for what is deliberately not committed.
+
+# Hand-labelling set, generated from pairs.jsonl.
+# Regenerate with: php make_labelling_set.php
+/labels.tsv
+/labels.html
